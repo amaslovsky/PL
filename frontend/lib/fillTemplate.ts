@@ -63,13 +63,21 @@ export function fillCoverPage(raw: string, data: NdaFormData): string {
     .replace(CONF_TERM_YEARS_BRACKETS_RE, (m) => m.replace(/[[\]]/g, ""));
 
   // 1. Party names in the table header.
-  out = out.replace(PARTY1_LINE, `|| ${data.party1.name} | ${data.party2.name} |`);
+  //
+  // IMPORTANT: use a function-replacement (`() => …`) rather than a string
+  // substitution. With a string, `$&`, `$1`, `$$` etc. in user-supplied
+  // names would be interpreted as backreferences against the matched
+  // placeholder. A function replacement treats the return value literally.
+  out = out.replace(
+    PARTY1_LINE,
+    () => `|| ${data.party1.name} | ${data.party2.name} |`,
+  );
 
   // 2. Purpose.
-  out = out.replace(PURPOSE_BRACKET, data.purpose);
+  out = out.replace(PURPOSE_BRACKET, () => data.purpose);
 
   // 3. Effective date.
-  out = out.replace(TODAY_BRACKET, data.effectiveDateDisplay);
+  out = out.replace(TODAY_BRACKET, () => data.effectiveDateDisplay);
 
   // 4. MNDA Term — exactly one `[x]` between the two lines.
   // Match the pair as a block so the invariant cannot be violated even if
@@ -92,10 +100,10 @@ export function fillCoverPage(raw: string, data: NdaFormData): string {
   });
 
   // 6. Governing law.
-  out = out.replace(GOVERNING_LAW_RE, `Governing Law: ${data.governingLaw}`);
+  out = out.replace(GOVERNING_LAW_RE, () => `Governing Law: ${data.governingLaw}`);
 
   // 7. Jurisdiction.
-  out = out.replace(JURISDICTION_RE, `Jurisdiction: ${data.jurisdiction}`);
+  out = out.replace(JURISDICTION_RE, () => `Jurisdiction: ${data.jurisdiction}`);
 
   return out;
 }
@@ -112,7 +120,10 @@ export function fillCoverPage(raw: string, data: NdaFormData): string {
 // the PDF renderer can use the same grammar.
 
 function subSpan(src: string, key: string, value: string): string {
-  return src.replaceAll(`<span class="coverpage_link">${key}</span>`, value);
+  // Function replacement so `$&`, `$1`, `$$` etc. in `value` are NOT
+  // interpreted as backreferences. See comment in `fillCoverPage`.
+  const needle = `<span class="coverpage_link">${key}</span>`;
+  return src.split(needle).join(value);
 }
 
 /**

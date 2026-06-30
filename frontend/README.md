@@ -19,6 +19,8 @@ Open <http://localhost:3000/mutual-nda>.
 - `npm run start` — serve the production build
 - `npm run lint` — ESLint
 - `npm run typecheck` — TypeScript only
+- `npm test` — Vitest in watch mode (use `npm run test:run` for one-shot)
+- See [TESTING.md](./TESTING.md) for the manual test checklist
 
 ## How it works
 

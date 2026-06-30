@@ -15,7 +15,7 @@ interface NdaPdfDocumentProps {
  * The PDF is built directly from `data` (typed form values). The
  * standard-terms prose is inlined as the `PARAGRAPHS` array below — a
  * single source of truth for the PDF rendering of the MNDA standard
- * termpdfStyles. The on-screen preview uses the markdown at
+ * terms. The on-screen preview uses the markdown at
  * `templates/mutual-nda.md` (with cross-references substituted by
  * `lib/fillTemplate.ts`), so a future task to consolidate these two
  * renderers can do so without breaking either consumer.
@@ -44,7 +44,7 @@ function CoverPage({ data }: { data: NdaFormData }) {
         Cover Page (“Cover Page”) and (2) the Common Paper Mutual NDA Standard
         Terms Version 1.0 (“Standard Terms”). Any modifications of the Standard
         Terms should be made on the Cover Page, which will control over
-        conflicts with the Standard TermpdfStyles.
+        conflicts with the Standard Terms.
       </Text>
 
       <Section title="Purpose" body={data.purpose} />
@@ -62,7 +62,7 @@ function CoverPage({ data }: { data: NdaFormData }) {
       <Checkbox checked={data.confidentialityTerm.mode === "years"}>
         {data.confidentialityTerm.years} year(s) from Effective Date, but in
         the case of trade secrets until Confidential Information is no longer
-        considered a trade secret under applicable lawpdfStyles.
+        considered a trade secret under applicable laws.
       </Checkbox>
       <Checkbox checked={data.confidentialityTerm.mode === "perpetuity"}>
         In perpetuity.
@@ -132,7 +132,7 @@ function SignatureTable() {
 }
 
 // ---------------------------------------------------------------------------
-// Standard terms — number-keyed text blockpdfStyles. All verbatim from the
+// Standard terms — number-keyed text blocks. All verbatim from the
 // Common Paper Mutual NDA Standard Terms v1.0 (cross-references filled
 // from `data` so the resulting document is self-contained).
 // ---------------------------------------------------------------------------
@@ -184,7 +184,7 @@ const PARAGRAPHS: Paragraph[] = [
     number: "7",
     title: "Proprietary Rights",
     body: () =>
-      `The Disclosing Party retains all of its intellectual property and other rights in its Confidential Information and its disclosure to the Receiving Party grants no license under such rightpdfStyles.`,
+      `The Disclosing Party retains all of its intellectual property and other rights in its Confidential Information and its disclosure to the Receiving Party grants no license under such rights.`,
   },
   {
     number: "8",
@@ -202,13 +202,13 @@ const PARAGRAPHS: Paragraph[] = [
     number: "10",
     title: "Equitable Relief",
     body: () =>
-      `A breach of this MNDA may cause irreparable harm for which monetary damages are an insufficient remedy. Upon a breach of this MNDA, the Disclosing Party is entitled to seek appropriate equitable relief, including an injunction, in addition to its other remediepdfStyles.`,
+      `A breach of this MNDA may cause irreparable harm for which monetary damages are an insufficient remedy. Upon a breach of this MNDA, the Disclosing Party is entitled to seek appropriate equitable relief, including an injunction, in addition to its other remedies.`,
   },
   {
     number: "11",
     title: "General",
     body: () =>
-      `Neither party has an obligation under this MNDA to disclose Confidential Information to the other or proceed with any proposed transaction. Neither party may assign this MNDA without the prior written consent of the other party, except that either party may assign this MNDA in connection with a merger, reorganization, acquisition or other transfer of all or substantially all its assets or voting securitiepdfStyles. Any assignment in violation of this Section is null and void. This MNDA will bind and inure to the benefit of each party’s permitted successors and assignpdfStyles. Waivers must be signed by the waiving party’s authorized representative and cannot be implied from conduct. If any provision of this MNDA is held unenforceable, it will be limited to the minimum extent necessary so the rest of this MNDA remains in effect. This MNDA (including the Cover Page) constitutes the entire agreement of the parties with respect to its subject matter, and supersedes all prior and contemporaneous understandings, agreements, representations, and warranties, whether written or oral, regarding such subject matter. This MNDA may only be amended, modified, waived, or supplemented by an agreement in writing signed by both partiepdfStyles. Notices, requests and approvals under this MNDA must be sent in writing to the email or postal addresses on the Cover Page and are deemed delivered on receipt. This MNDA may be executed in counterparts, including electronic copies, each of which is deemed an original and which together form the same agreement.`,
+      `Neither party has an obligation under this MNDA to disclose Confidential Information to the other or proceed with any proposed transaction. Neither party may assign this MNDA without the prior written consent of the other party, except that either party may assign this MNDA in connection with a merger, reorganization, acquisition or other transfer of all or substantially all its assets or voting securities. Any assignment in violation of this Section is null and void. This MNDA will bind and inure to the benefit of each party’s permitted successors and assigns. Waivers must be signed by the waiving party’s authorized representative and cannot be implied from conduct. If any provision of this MNDA is held unenforceable, it will be limited to the minimum extent necessary so the rest of this MNDA remains in effect. This MNDA (including the Cover Page) constitutes the entire agreement of the parties with respect to its subject matter, and supersedes all prior and contemporaneous understandings, agreements, representations, and warranties, whether written or oral, regarding such subject matter. This MNDA may only be amended, modified, waived, or supplemented by an agreement in writing signed by both parties. Notices, requests and approvals under this MNDA must be sent in writing to the email or postal addresses on the Cover Page and are deemed delivered on receipt. This MNDA may be executed in counterparts, including electronic copies, each of which is deemed an original and which together form the same agreement.`,
   },
 ];
 
