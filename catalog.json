@@ -1,0 +1,79 @@
+{
+  "description": "Legal agreement templates sourced from Common Paper (https://commonpaper.com), released under the Creative Commons Attribution 4.0 International License (CC BY 4.0). See templates/LICENSE.md for attribution and license details.",
+  "license": "CC BY 4.0",
+  "source": "https://github.com/CommonPaper",
+  "templates": [
+    {
+      "name": "Mutual Non-Disclosure Agreement",
+      "filename": "mutual-nda.md",
+      "description": "Common Paper standard Mutual Non-Disclosure Agreement (MNDA) — version 1.0. Standard terms for bidirectional confidential information exchange, intended to be used together with the Mutual NDA Cover Page.",
+      "source": "https://github.com/CommonPaper/Mutual-NDA"
+    },
+    {
+      "name": "Mutual NDA Cover Page",
+      "filename": "mutual-nda-coverpage.md",
+      "description": "Cover Page to be executed alongside the Mutual Non-Disclosure Agreement Standard Terms. Captures party details, purpose, effective date, term of confidentiality, governing law and jurisdiction.",
+      "source": "https://github.com/CommonPaper/Mutual-NDA"
+    },
+    {
+      "name": "Cloud Service Agreement",
+      "filename": "cloud-service-agreement.md",
+      "description": "Common Paper standard Cloud Service Agreement (CSA) — an easy-to-use agreement for buying and selling cloud software and SaaS products. Standard terms incorporated by reference into a signed CSA Cover Page and Order Forms.",
+      "source": "https://github.com/CommonPaper/CSA"
+    },
+    {
+      "name": "Service Level Agreement",
+      "filename": "service-level-agreement.md",
+      "description": "Common Paper standard Service Level Agreement (SLA) — version 2.0. Designed to be used together with the Cloud Service Agreement to define uptime, support and service credits.",
+      "source": "https://github.com/CommonPaper/SLA"
+    },
+    {
+      "name": "Professional Services Agreement",
+      "filename": "professional-services-agreement.md",
+      "description": "Common Paper standard Professional Services Agreement (PSA) — version 1.0. Standard terms for engaging a vendor to deliver services, incorporated by reference into a signed PSA Cover Page and Statements of Work.",
+      "source": "https://github.com/CommonPaper/PSA"
+    },
+    {
+      "name": "Data Processing Agreement",
+      "filename": "data-processing-agreement.md",
+      "description": "Common Paper standard Data Processing Agreement (DPA) — version 1.0. Standard terms governing the processing of personal data by a service provider on behalf of a customer, incorporated by reference into a signed DPA Cover Page.",
+      "source": "https://github.com/CommonPaper/DPA"
+    },
+    {
+      "name": "Design Partner Agreement",
+      "filename": "design-partner-agreement.md",
+      "description": "Common Paper standard Design Partner Agreement — version 1.0. Standard terms for engaging an early-design-partner customer to provide product feedback in exchange for pricing concessions or other benefits.",
+      "source": "https://github.com/CommonPaper/Design-Partner-Agreement"
+    },
+    {
+      "name": "Software License Agreement",
+      "filename": "software-license-agreement.md",
+      "description": "Common Paper standard Software License Agreement — version 1.0. Standard terms for licensing on-premise or downloadable software, incorporated by reference into a signed Software License Agreement Cover Page and Order Forms.",
+      "source": "https://github.com/CommonPaper/Software-License-Agreement"
+    },
+    {
+      "name": "Partnership Agreement",
+      "filename": "partnership-agreement.md",
+      "description": "Common Paper standard Partnership Agreement — version 1.0. Standard terms for non-equity business partnerships, incorporated by reference into a signed Partnership Agreement Cover Page and Statements of Work.",
+      "source": "https://github.com/CommonPaper/Partnership-Agreement"
+    },
+    {
+      "name": "Pilot Agreement",
+      "filename": "pilot-agreement.md",
+      "description": "Common Paper standard Pilot Agreement. Short-term contract that allows a prospective customer to test a product or service before committing to a longer-term deal (such as a CSA or Software License Agreement).",
+      "source": "https://github.com/CommonPaper/Pilot-Agreement"
+    },
+    {
+      "name": "Business Associate Agreement",
+      "filename": "business-associate-agreement.md",
+      "description": "Common Paper standard Business Associate Agreement (BAA) — version 1.0. Standard terms required under HIPAA for engagements involving protected health information, incorporated by reference into a signed BAA Cover Page.",
+      "source": "https://github.com/CommonPaper/BAA"
+    },
+    {
+      "name": "AI Addendum",
+      "filename": "ai-addendum.md",
+      "description": "Common Paper standard AI Addendum — version 1.0. Supplemental terms governing the use of AI services and AI-generated outputs, designed to be incorporated into a Cloud Service Agreement or Software License Agreement.",
+      "source": "https://github.com/CommonPaper/AI-Addendum"
+    }
+  ]
+}
