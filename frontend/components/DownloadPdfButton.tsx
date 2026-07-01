@@ -9,8 +9,8 @@ interface DownloadPdfButtonProps {
   data: NdaFormData;
   /**
    * Optional async hook fired before the download starts — used by
-   * `NdaWorkspace` to auto-save the draft so a downloaded PDF always
-   * shows up in the user's "My drafts" list.
+   * `Workspace` to auto-save the draft so a downloaded PDF always shows
+   * up in the user's "My drafts" list.
    */
   onBeforeDownload?: () => void | Promise<void>;
 }

@@ -20,9 +20,13 @@ function jsonResponse(body: unknown, init: ResponseInit = {}): Response {
 }
 
 describe("postChat", () => {
-  it("defaults document_type to mnda", async () => {
+  it("omits document_type when no hint is given", async () => {
     const fetchMock = vi.fn().mockResolvedValue(
-      jsonResponse({ fields: {}, assistant_message: "ok" }),
+      jsonResponse({
+        document_type: "mnda",
+        fields: {},
+        assistant_message: "ok",
+      }),
     );
     vi.stubGlobal("fetch", fetchMock);
 
@@ -31,13 +35,16 @@ describe("postChat", () => {
     const init = fetchMock.mock.calls[0][1] as RequestInit;
     expect(JSON.parse(init.body as string)).toEqual({
       messages: [{ role: "user", content: "hi" }],
-      document_type: "mnda",
     });
   });
 
-  it("sends the supplied document_type", async () => {
+  it("sends the supplied document_type hint", async () => {
     const fetchMock = vi.fn().mockResolvedValue(
-      jsonResponse({ fields: null, assistant_message: "fallback" }),
+      jsonResponse({
+        document_type: "cloud-service-agreement",
+        fields: {},
+        assistant_message: "ok",
+      }),
     );
     vi.stubGlobal("fetch", fetchMock);
 
@@ -48,16 +55,20 @@ describe("postChat", () => {
     expect(body.document_type).toBe("csa");
   });
 
-  it("tolerates fields=null from a fallback response", async () => {
+  it("returns the document_type the LLM chose", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue(
-        jsonResponse({ fields: null, assistant_message: "nope" }),
+        jsonResponse({
+          document_type: "cloud-service-agreement",
+          fields: {},
+          assistant_message: "ok",
+        }),
       ),
     );
-    const out = await postChat([], "csa");
-    expect(out.fields).toBeNull();
-    expect(out.assistant_message).toBe("nope");
+    const out = await postChat([{ role: "user", content: "I need a CSA" }]);
+    expect(out.document_type).toBe("cloud-service-agreement");
+    expect(out.assistant_message).toBe("ok");
   });
 
   it("throws with server detail on non-2xx", async () => {

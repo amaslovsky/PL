@@ -12,9 +12,11 @@ export interface ChatMessage {
 }
 
 export interface ChatResponse {
-  /** Best-guess fields. `null` when the BE returned the static fallback
-   *  for an unsupported document type (no LLM call). */
-  fields: NdaFormData | null;
+  /** The template the LLM picked for this turn. */
+  document_type: string;
+  /** Best-guess fields. Empty `{}` for templates that don't yet have a
+   *  live fill pipeline (today: every non-MNDA template). */
+  fields: NdaFormData | Record<string, never>;
   assistant_message: string;
 }
 
@@ -57,13 +59,14 @@ async function getJson<T>(path: string): Promise<T> {
 
 /**
  * Send the conversation to `/api/chat` and return the assistant reply.
- * `documentType` defaults to "mnda" for back-compat; pass a registry id
- * (e.g. "csa") to address a different document. Throws on network or
- * non-2xx responses with the server's error body when available.
+ * The LLM picks the document type from the user's message; pass an
+ * optional `documentType` hint to bias the choice (e.g. after the user
+ * has explicitly switched). Throws on network or non-2xx responses with
+ * the server's error body when available.
  */
 export async function postChat(
   messages: ChatMessage[],
-  documentType: string = "mnda",
+  documentType?: string,
 ): Promise<ChatResponse> {
   const res = await fetch("/api/chat", {
     method: "POST",

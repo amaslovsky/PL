@@ -75,14 +75,16 @@ Real auth lives in `backend/app/auth.py`. `POST /api/auth/signup` hashes the pas
 - `pdf/NdaPdfDocument.tsx` renders the same data via `@react-pdf/renderer` to a downloadable Blob. `pdf/pdfStyles.ts` is a string-prefix sentinel — a Vitest test asserts no `pdfStyles.` substring leaks into rendered text.
 - **PL-5 (chat-driven drafting):** `NdaWorkspace` is a two-column chat | preview UI. The form is gone. Each user turn hits `POST /api/chat`, which calls the LLM and returns `{fields, assistant_message}`; the returned `fields` flow straight into `fillFullNda` so the preview and PDF download work unchanged.
 
-### Multi-document surface (PL-6)
+### Multi-document surface (PL-6 → PL-8)
 
-- `frontend/lib/documents/registry.ts` is the FE source of truth for which documents the app routes the user to. 11 entries today (one per unique slug; the MNDA cover page is folded under MNDA). Each entry carries `wired: boolean`, `closestMatch: DocId`, and (when wired) template filenames. The `ALIASES` map links colloquial names (HIPAA → BAA, SOW → PSA, MOU → MNDA, …) to registry slugs.
-- `frontend/lib/documents/wiring.ts` attaches React components to each entry (`Workspace` for wired, `Unsupported` for the rest). Pure data lives in `registry.ts` so it unit-tests without React.
-- `frontend/app/documents/[type]/page.tsx` is a single dynamic route. `generateStaticParams` enumerates `listDocuments()` at build time so static export ships an HTML file per registered slug. Unknown slugs 404 via `notFound()`. The shared `app/_docRender.tsx` helper does the disk read for wired docs and dispatches to the right workspace component.
-- `frontend/app/mutual-nda/page.tsx` is a thin alias of the same render path — no redirect, no middleware.
-- `frontend/components/UnsupportedDocWorkspace.tsx` mirrors the two-column MNDA shell for unwired docs. The chat still works; every reply is the BE's static fallback. The right pane is a tinted yellow notice with a link to the closest wired match.
-- `backend/app/documents.py` mirrors the registry (id, display_name, wired, closest_match). `app/main.py`'s `POST /api/chat` reads an optional `document_type` field; non-MNDA ids return `{fields: null, assistant_message: <static fallback>}` without calling the LLM. PL-7+ will introduce per-doc schemas and call the LLM for additional types.
+PL-6 shipped a per-doc route `/documents/[id]` with a closest-match fallback for unwired templates. PL-8 simplified this dramatically: the chat workspace is now a single two-column page at `/` and the LLM picks the template from the user's freeform message. Per-doc URLs and `/mutual-nda` are thin client-side redirects.
+
+- `frontend/lib/documents/registry.ts` is the FE source of truth for the 11 templates (id, displayName, description, optional coverPageFilename / standardTermsFilename for templates with checked-in markdown). Pure data, no React.
+- `frontend/app/page.tsx` (server component) reads every registered `standardTermsFilename` and `coverPageFilename` at build time and ships the markdown to the client. `Workspace.tsx` (`'use client'`) is the chat | preview UI — default document type is MNDA, and the right pane swaps between MNDA live preview (via `fillFullNda`) and any other template's standard-terms markdown as the LLM picks a new `document_type`.
+- `frontend/app/documents/[type]/page.tsx` and `frontend/app/mutual-nda/page.tsx` both call `redirect("/")` from a server component. `generateStaticParams` enumerates the 11 slugs so static export ships a `NEXT_REDIRECT` HTML file per slug; unknown ids fall through to the SPA 404.
+- `frontend/components/Chat.tsx` (PL-6, kept) hosts `MessageBubble` and `ThinkingBubble` so the chat column renders identically regardless of which template is active.
+- `backend/app/documents.py` mirrors the FE registry (id, display_name, description). `app/main.py`'s `POST /api/chat` reads an optional `document_type` hint; the BE always invokes the LLM and the LLM returns the `document_type` it picked (so the FE swaps the right pane). PL-8 removed the static-fallback path that PL-6 had for non-MNDA ids.
+- `backend/app/ai.py` generates a system prompt from `REGISTRY` on every call (`_catalog_block`) so the LLM sees the full template list each turn. `ChatTurn` adds `document_type: str`; `fields` is now `dict` (MNDA fields only when `document_type == "mnda"`).
 
 ### Saved drafts (PL-7)
 
@@ -103,7 +105,7 @@ The available documents are covered in the catalog.json file in the project root
 
 @catalog.json
 
-The chat surface is routed to all 11 registered documents via `/documents/<id>`; today only the Mutual NDA is wired (full AI chat → live preview → PDF download), the other 10 reply with a static closest-match fallback message. Served behind real auth (email + bcrypt password, 7-day session cookie). Drafts save to a per-user SQLite table so the user can return to them via `/my-documents`. The disclaimer footer and chrome appear on every page.
+The chat surface at `/` knows all 11 registered documents (Common Paper templates, CC BY 4.0). The LLM picks the template from the user's freeform message and the right pane swaps between the MNDA live preview and any other template's standard-terms markdown. Served behind real auth (email + bcrypt password, 7-day session cookie). Drafts save to a per-user SQLite table so the user can return to them via `/my-documents`. The disclaimer footer and chrome appear on every page. `/documents/<id>` and `/mutual-nda` are thin redirects to `/`.
 
 ## Development process
 
@@ -184,7 +186,7 @@ Backend available at http://localhost:8000
 - Merged to `main` as commit `44f078c` (no-ff merge of `feature/PL-5-ai-chat` `51707cf`).
 
 ### Completed (PL-6)
-- Multi-doc routing surface with closest-match fallback for unwired templates:
+- Multi-doc routing surface with closest-match fallback for unwired templates (superseded by PL-8 — kept here for history):
   - `frontend/lib/documents/registry.ts` — 11-entry registry (MNDA cover page folded under MNDA). One source of truth for display name, description, wiring flag, and closest-match slug. Pure data, no React imports.
   - `frontend/lib/documents/wiring.ts` — attaches `NdaWorkspace` to MNDA and `UnsupportedDocWorkspace` to the other 10 entries.
   - `frontend/app/documents/[type]/page.tsx` — single dynamic route. `generateStaticParams` enumerates the registry at build time; static export ships 11 HTML files.
@@ -205,24 +207,24 @@ Backend available at http://localhost:8000
 - `POST /api/auth/login` - Body `{email, password}`. Verifies credentials, sets the cookie. 401 on bad credentials.
 - `GET /api/auth/me` - JSON `{authenticated: bool, user_id?: int, email?: str}`. 401 if no cookie.
 - `POST /api/auth/logout` - Clears the cookie, returns `{ok: true}`.
-- `POST /api/chat` - Body: `{messages: [{role, content}], document_type?: str}`. Returns `{fields: NdaFormData | null, assistant_message: str}`. 401 if unauthenticated. `document_type` defaults to `"mnda"`; any other id triggers a static fallback response (no LLM call).
+- `POST /api/chat` - Body: `{messages: [{role, content}], document_type?: str}`. Returns `{document_type: str, fields: NdaFormData | dict, assistant_message: str}`. 401 if unauthenticated. `document_type` (request) biases the LLM toward a template; `document_type` (response) is the slug the LLM picked. Every chat call now invokes `gpt-oss-120b` with a system prompt that enumerates all 11 templates — the BE has no static fallback path.
 - `GET /api/documents` - Lists the signed-in user's saved drafts (newest first). 401 if unauthenticated.
-- `POST /api/documents` - Body `{document_type: str, data: dict}`. Validates against the per-doc schema (`NdaFields` for MNDA today). 422 on schema failure, 400 on unsupported type.
+- `POST /api/documents` - Body `{document_type: str, data: dict}`. Validates against the per-doc schema (`NdaFields` for MNDA today; other types skip schema validation). 422 on MNDA schema failure, 400 on unknown type.
 - `GET /api/documents/<id>` - Single document. 404 if missing or not the owner.
 - `PUT /api/documents/<id>` - Updates the document's data_json.
 - `DELETE /api/documents/<id>` - Removes the document. 404 if missing or not the owner.
-- `GET /` - Serves Next.js landing if authed, else 303 to /login
-- `GET /documents/<id>` - One HTML file per registered slug (11 today); MNDA wires the chat workspace, others show the closest-match notice.
+- `GET /` - Serves Next.js chat workspace (`/`) if authed, else 303 to /login. Two-column chat | preview; right pane swaps between MNDA live preview and any other template's standard-terms markdown as the LLM switches.
+- `GET /documents/<id>` - Thin client-side redirect to `/`; one HTML file per registered slug (11 today). Unknown slugs fall through to the SPA 404.
 - `GET /login` - SPA sign-in screen (Next.js).
 - `GET /signup` - SPA sign-up screen (Next.js).
 - `GET /my-documents` - SPA drafts list, client-side fetch via cookie.
-- `GET /mutual-nda` - Alias of `/documents/mnda`; renders the same MNDA workspace.
+- `GET /mutual-nda` - Thin client-side redirect to `/`.
 - `GET /_next/*` - Next.js static assets
 
 ### Upcoming
-- Additional wired documents (PL-7+). The 10 unwired catalog entries are routed via `/documents/<id>` and answered with a closest-match message; wire each one in its own PR by adding its cover page + standard terms to `templates/` and `frontend/templates/`, extending the FE registry, and (if needed) the BE registry + chat schemas.
+- Per-template schemas for the 10 non-MNDA documents so the live preview + chat fields work the way MNDA does today.
 - Password recovery flow (no SMTP today).
-- Re-opening a saved draft into the chat workspace (the `/my-documents` `Open` link currently just sends the user back to `/documents/<id>` without rehydrating state).
+- Re-opening a saved draft into the chat workspace (the `/my-documents` `Open` link currently just sends the user back to `/` without rehydrating state).
 
 ### Completed (PL-7)
 - Real auth (replaces the PL-4 fake login):
@@ -240,7 +242,21 @@ Backend available at http://localhost:8000
 - 22 new tests: 8 BE auth (signup/login/me/logout happy paths + 409/401/422 edges), 7 BE documents (auth required, list/get cross-user 404, delete, schema validation 422, unsupported type 400), 7 FE api helpers (signUp, signIn, saveDocument, listSavedDocuments wiring); total suite 66 FE + 23 BE = 89 passing.
 - Static export builds clean: 18 routes prerendered (4 new: `/login`, `/signup`, `/my-documents`; previously 14). Manual smoke checklist extended in `frontend/TESTING.md`.
 
+### Completed (PL-8)
+- Chat-first home, all 11 templates first-class:
+  - `frontend/app/page.tsx` — server component reads every registered template's markdown at build time and ships it to the client.
+  - `frontend/components/Workspace.tsx` (new) — two-column chat | preview, default MNDA. Right pane swaps live between MNDA live preview (`fillFullNda` + `NdaPreview` + `DownloadPdfButton`) and any other template's standard-terms markdown as the LLM returns a new `document_type`. The chat thread drives the switch.
+  - `frontend/app/documents/[type]/page.tsx` and `frontend/app/mutual-nda/page.tsx` — both call `redirect("/")`; `generateStaticParams` enumerates the 11 registry slugs so static export ships a `NEXT_REDIRECT` HTML file per slug.
+  - `frontend/components/NdaWorkspace.tsx`, `UnsupportedDocWorkspace.tsx`, `frontend/lib/documents/wiring.ts`, `frontend/lib/documents/aliases.test.ts`, `frontend/app/_docRender.tsx` — deleted (no longer needed; the universal Workspace replaces them).
+  - `frontend/components/Header.tsx` — email becomes a clickable dropdown menu (caret rotates when open). Click-outside and Escape both close the dropdown; menu items close it before navigating. "Documents" nav link renamed "New draft".
+  - `backend/app/ai.py` — `ChatTurn.document_type: str` added to the structured-output schema; `fields` widened to `dict` (MNDA-shaped only when `document_type == "mnda"`). The system prompt is generated from `REGISTRY` on every call (`_catalog_block`), so the LLM always sees the full template list.
+  - `backend/app/documents.py` — flattened: dropped `wired`, `closest_match`, `is_supported`, `fallback_message`. `is_known()` remains. The BE always invokes the LLM; the static-fallback path is gone.
+  - `backend/app/main.py` — `ChatRequest.document_type` is now optional (`str | None = None`); no behavioral branch on it (LLM response carries the chosen slug back). `POST /api/documents` and `PUT` use `is_known()` instead of `is_supported()`; only MNDA gets per-doc schema validation today.
+- 7 new tests: 3 BE (registry size + unique ids + unknown-type rejection), 3 FE (`postChat` request/response shape, no-hint omits `document_type`, hint is forwarded), 1 BE chat smoke. Total suite 62 FE + 21 BE = 83 passing.
+- Static export builds clean: 18 routes (same route count as PL-7; `/documents/<id>` is now a redirect file per slug and `/mutual-nda` is a redirect page). Manual smoke checklist expanded in `frontend/TESTING.md` to cover the chat-first home, the Header dropdown, and the redirect routes.
+
 ### Implementation Update
+- **Chat-first home + all 11 templates in LLM memory (2026-07-01, PL-8):** Replaced the PL-6 card-grid landing and per-doc workspaces with a single two-column chat | preview surface at `/`. The LLM now sees every template on every call (system prompt generated from the registry) and picks one freely per turn; the client follows its lead and swaps the right pane between MNDA live preview and the chosen template's standard-terms markdown. `/documents/<id>` and `/mutual-nda` are thin `redirect("/")` pages. Header email became a clickable dropdown menu (caret rotates; outside-click and Escape both close it). Dropped the PL-6 `wired` / `closestMatch` / `fallbackMessage` plumbing across both FE and BE. Suite 62 FE + 21 BE = 83 passing; static export still ships 18 routes; container smoke-test confirms chat correctly picks CSA / MNDA from freeform user messages.
 - **Multiple users & final polish (2026-07-01, PL-7):** Replaced fake login with bcrypt-hashed email+password sign-up/sign-in; added per-user document storage behind `GET/POST/PUT/DELETE /api/documents`; added `/login`, `/signup`, `/my-documents` SPA routes plus a global `Header`/`Footer` and a tinted disclaimer banner on the preview pane. The `Download PDF` button auto-saves the draft before downloading, so every PDF also shows up on `/my-documents`. Data validation on `POST/PUT /api/documents` re-uses the per-doc Pydantic schema (today `NdaFields`); unsupported types get 400, schema failures get 422. Auth flows tested at 8 BE + 7 BE = 15; api-helper plumbing tested at 4 FE. Suite now 66 FE + 23 BE = 89 passing; static export produces 18 routes.
 - **Multi-document surface (2026-07-01, PL-6):** Lifted the chat surface from MNDA-only to all 11 registered documents via a `DocumentRegistry` and one dynamic route (`/documents/[type]`) with `generateStaticParams`. The other 10 entries get an `UnsupportedDocWorkspace` that explains the closest wired match in the right pane and keeps the chat functional; the backend returns `{fields: null, assistant_message: <static>}` for any non-MNDA `document_type` (no LLM call). `/mutual-nda` alias kept as a thin render-path wrapper. New pytest dev group added in `[project.optional-dependencies].dev` so Docker's `uv sync --frozen --no-dev` stays slim. Test suite at 61 FE + 8 BE = 69 passing (14 new FE + 8 new BE); static export produces 11 doc HTML files plus the alias; container smoke-test confirms MNDA chat still works, `/documents/csa` returns the static fallback message, unknown ids receive a generic fallback.
 - **AI chat (2026-07-01, PL-5):** Form-driven MNDA prototype replaced with a freeform chat. Backend `POST /api/chat` calls `gpt-oss-120b` via LiteLLM + Cerebras using structured outputs and returns the current best-guess values for every MNDA field plus a short assistant reply. The returned fields flow into the existing `fillFullNda` + `NdaPdfDocument` pipeline — preview and PDF download unchanged. Test suite at 47/47 passing; static export builds clean; container rebuilds and the chat endpoint returns the expected structured payload end-to-end. Merged to `main` as commit `44f078c` (no-ff merge of `feature/PL-5-ai-chat` `51707cf`).

@@ -1,8 +1,9 @@
-import { getDocument } from "@/lib/documents/wiring";
-import { DocPage } from "../_docRender";
+import { redirect } from "next/navigation";
 
-export default function MutualNdaPage() {
-  const doc = getDocument("mnda");
-  if (!doc) throw new Error("mnda missing from registry");
-  return <DocPage doc={doc} />;
+/**
+ * Back-compat redirect for the original PL-3 alias. The chat surface
+ * now lives at `/`; the LLM picks the template from the user's message.
+ */
+export default function MutualNdaRedirect() {
+  redirect("/");
 }

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import type { SavedDocument } from "@/lib/api";
 import { listSavedDocuments } from "@/lib/api";
-import { listDocuments } from "@/lib/documents/wiring";
+import { listDocuments } from "@/lib/documents/registry";
 import { MyDocumentsList } from "./MyDocumentsList";
 
 /**

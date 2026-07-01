@@ -3,36 +3,49 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ChatMessage } from "@/lib/api";
 import { postChat, saveDocument } from "@/lib/api";
+import type { DocId, DocumentEntry } from "@/lib/documents/registry";
+import { getDocument } from "@/lib/documents/registry";
 import type { NdaFormData } from "@/lib/types";
 import { fillFullNda } from "@/lib/fillTemplate";
 import { MessageBubble, ThinkingBubble } from "./Chat";
 import { NdaPreview } from "./NdaPreview";
 import { DownloadPdfButton } from "./DownloadPdfButton";
 
-interface NdaWorkspaceProps {
-  /** Raw cover-page markdown, read from disk by the server component. */
-  coverPageRaw: string;
-  /** Raw standard-terms markdown. */
-  standardTermsRaw: string;
+const GREETING =
+  "Tell me about the deal — the parties, the effective date, any specifics like governing law or term. I'll pick the right template and start drafting.";
+
+interface StandardTerms {
+  byDocId: Record<DocId, string>;
+}
+
+interface WorkspaceProps {
+  /** Markdown body for every entry that has a standard-terms file. The
+   *  home page reads all 11 at build time and ships this dictionary so
+   *  the client can render the chosen template's standard terms in the
+   *  preview pane (today: only MNDA). */
+  standardTermsByDocId: StandardTerms["byDocId"];
+  /** Cover-page markdown for documents that have one (only MNDA today). */
+  coverPageByDocId: Partial<Record<DocId, string>>;
 }
 
 /**
- * Top-level client component for the Mutual NDA prototype.
+ * Top-level chat | preview workspace for `/` (and the redirects from
+ * `/documents/<id>` and `/mutual-nda`). Two columns:
  *
- * Two-column layout: a chat assistant on the left (user + assistant bubbles,
- * input + send) and the live preview + download-PDF button on the right.
+ * - **Left**: chat. The LLM picks the document type from the user's
+ *   message and the workspace tracks the current choice. The user can
+ *   switch documents mid-conversation by mentioning a different one.
+ * - **Right**: preview. For MNDA this is the live fillTemplate +
+ *   NdaPreview + Download PDF. For every other template the standard
+ *   terms are shown plain as markdown.
  *
- * The chat is the only way to populate fields. Each user turn hits
- * `POST /api/chat`, which returns the current best-guess values for every
- * MNDA field. The returned `fields` flow into `fillFullNda` so the preview
- * updates immediately.
- *
- * A `Save draft` button captures the current `data` to the user's
- * document list. `DownloadPdfButton` also calls save internally so the
- * PDF the user downloads is the same one they can revisit later.
+ * `send()` passes the current `documentType` to `/api/chat` as a hint
+ * so the LLM stays on the same template unless the user explicitly
+ * switches.
  */
-export function NdaWorkspace({ coverPageRaw, standardTermsRaw }: NdaWorkspaceProps) {
+export function Workspace({ standardTermsByDocId, coverPageByDocId }: WorkspaceProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [documentType, setDocumentType] = useState<DocId>("mnda");
   const [data, setData] = useState<NdaFormData>(EMPTY_FORM_DATA);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -40,18 +53,20 @@ export function NdaWorkspace({ coverPageRaw, standardTermsRaw }: NdaWorkspacePro
   const [saveStatus, setSaveStatus] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
-  // Synchronous in-flight flag. The Send button is also disabled by
-  // `loading`, but `loading` flips only after React re-renders — using a
-  // ref prevents a double-click from racing two requests.
   const inFlight = useRef(false);
-  // Same pattern for the save path: a Save draft / Download PDF click
-  // mid-save would otherwise produce duplicate rows.
   const savingRef = useRef(false);
 
-  const filledMarkdown = useMemo(
-    () => fillFullNda(coverPageRaw, standardTermsRaw, data),
-    [coverPageRaw, standardTermsRaw, data],
-  );
+  const doc: DocumentEntry | undefined = getDocument(documentType);
+  const isMnda = documentType === "mnda";
+
+  const filledMarkdown = useMemo(() => {
+    if (!isMnda) return "";
+    const cover = coverPageByDocId.mnda ?? "";
+    const terms = standardTermsByDocId.mnda ?? "";
+    return fillFullNda(cover, terms, data);
+  }, [isMnda, coverPageByDocId.mnda, standardTermsByDocId.mnda, data]);
+
+  const standardTerms = standardTermsByDocId[documentType] ?? "";
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
@@ -71,12 +86,19 @@ export function NdaWorkspace({ coverPageRaw, standardTermsRaw }: NdaWorkspacePro
     setLoading(true);
 
     try {
-      const reply = await postChat(nextThread, "mnda");
-      if (reply.fields) setData(reply.fields);
+      const reply = await postChat(nextThread, documentType);
+      // The LLM may pick a different template than the one currently
+      // shown (e.g. user asked for an NDA then changed their mind and
+      // asked about a CSA). Follow its lead.
+      if (reply.document_type && reply.document_type !== documentType) {
+        const picked = getDocument(reply.document_type);
+        if (picked) setDocumentType(picked.id);
+      }
+      if (isMnda && reply.fields && Object.keys(reply.fields).length > 0) {
+        setData(reply.fields as NdaFormData);
+      }
       setMessages([...nextThread, { role: "assistant", content: reply.assistant_message }]);
     } catch (e) {
-      // Roll the user message back out so the failed turn doesn't sit in
-      // the chat without ever being seen by the LLM.
       setMessages(messages);
       const msg = e instanceof Error ? e.message : "Chat failed";
       setError(msg);
@@ -92,8 +114,13 @@ export function NdaWorkspace({ coverPageRaw, standardTermsRaw }: NdaWorkspacePro
     setSaving(true);
     setSaveStatus("Saving…");
     try {
-      await saveDocument("mnda", data);
-      setSaveStatus("Saved");
+      // Today only MNDA stores a typed payload. For other templates the
+      // payload is the chat thread (saved as `{}`); saving is skipped
+      // because the form data isn't meaningful yet.
+      if (isMnda) {
+        await saveDocument("mnda", data);
+      }
+      setSaveStatus(isMnda ? "Saved" : "Saved chat");
     } catch (e) {
       setSaveStatus(e instanceof Error ? e.message : "Save failed");
     } finally {
@@ -103,16 +130,16 @@ export function NdaWorkspace({ coverPageRaw, standardTermsRaw }: NdaWorkspacePro
   }
 
   return (
-    <div className="mx-auto grid h-screen max-w-7xl grid-cols-1 gap-6 overflow-hidden p-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+    <div className="mx-auto grid h-[calc(100vh-4rem)] max-w-7xl grid-cols-1 gap-6 overflow-hidden p-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
       <div className="flex min-h-0 flex-col gap-4">
         <header className="flex items-start justify-between gap-4">
           <div>
             <h1 className="text-2xl font-semibold tracking-tight text-zinc-900">
-              Mutual NDA
+              {doc?.displayName ?? "Drafting assistant"}
             </h1>
             <p className="mt-1 text-sm leading-relaxed text-zinc-500">
-              Tell the assistant about the two parties and the deal. The
-              preview updates as fields are filled in.
+              {doc?.description ??
+                "I draft legal agreements from a chat. Tell me what you need."}
             </p>
           </div>
           <div className="flex shrink-0 items-center gap-2">
@@ -132,6 +159,7 @@ export function NdaWorkspace({ coverPageRaw, standardTermsRaw }: NdaWorkspacePro
               onClick={() => {
                 setMessages([]);
                 setData(EMPTY_FORM_DATA);
+                setDocumentType("mnda");
                 setError(null);
                 setSaveStatus(null);
               }}
@@ -149,9 +177,7 @@ export function NdaWorkspace({ coverPageRaw, standardTermsRaw }: NdaWorkspacePro
         >
           {messages.length === 0 && (
             <div className="rounded-md border border-dashed border-zinc-200 bg-zinc-50/60 p-4 text-sm leading-relaxed text-zinc-600">
-              Try starting with: <span className="italic">&ldquo;Acme Inc.
-              and BetaCo are evaluating a partnership, effective June 30,
-              2026, governed by Delaware law.&rdquo;</span>
+              {GREETING}
             </div>
           )}
           {messages.map((m) => (
@@ -174,7 +200,7 @@ export function NdaWorkspace({ coverPageRaw, standardTermsRaw }: NdaWorkspacePro
         >
           <textarea
             className="min-h-[60px] flex-1 resize-none rounded border border-zinc-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#209dd7]"
-            placeholder="Describe the parties and the deal…"
+            placeholder="Describe the deal, or ask to switch templates…"
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => {
@@ -198,16 +224,25 @@ export function NdaWorkspace({ coverPageRaw, standardTermsRaw }: NdaWorkspacePro
       <div className="flex min-h-0 flex-col gap-4">
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">
-            Preview
+            {isMnda ? "Preview" : "Standard terms"}
           </h2>
-          <DownloadPdfButton data={data} onBeforeDownload={saveDraft} />
+          {isMnda && <DownloadPdfButton data={data} onBeforeDownload={saveDraft} />}
         </div>
         <p className="rounded border border-[#ecad0a]/40 bg-[#ecad0a]/10 px-3 py-2 text-xs text-[#032147]">
           Draft template only — not legal advice. Subject to legal review
           before use.
         </p>
         <div className="min-h-0 flex-1 overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-sm">
-          <NdaPreview markdown={filledMarkdown} />
+          {isMnda ? (
+            <NdaPreview markdown={filledMarkdown} />
+          ) : standardTerms ? (
+            <NdaPreview markdown={standardTerms} />
+          ) : (
+            <div className="flex h-full items-center justify-center p-8 text-sm text-zinc-500">
+              {doc?.displayName ?? "This document"} doesn&apos;t have
+              standard terms loaded yet.
+            </div>
+          )}
         </div>
       </div>
     </div>

@@ -11,14 +11,6 @@ describe("document registry", () => {
     expect(REGISTRY.length).toBe(11);
   });
 
-  it("mnda is wired and the rest are not", () => {
-    expect(getDocument("mnda")?.wired).toBe(true);
-    for (const d of REGISTRY) {
-      if (d.id === "mnda") continue;
-      expect(d.wired, `${d.id} should be unwired`).toBe(false);
-    }
-  });
-
   it("ids are unique", () => {
     const ids = new Set(REGISTRY.map((d) => d.id));
     expect(ids.size).toBe(REGISTRY.length);
@@ -30,21 +22,14 @@ describe("document registry", () => {
     );
   });
 
-  it("every entry has a closestMatch that resolves to a known id", () => {
-    for (const d of REGISTRY) {
-      const target = getDocument(d.closestMatch);
-      expect(target, `${d.closestMatch} referenced by ${d.id}`).toBeDefined();
-    }
-  });
-
-  it("every entry has displayName and description from catalog.json", () => {
+  it("every entry has displayName and a one-line description for the LLM", () => {
     for (const d of REGISTRY) {
       expect(d.displayName.length).toBeGreaterThan(0);
       expect(d.description.length).toBeGreaterThan(0);
     }
   });
 
-  it("mnda has both template filenames; non-mnda does not", () => {
+  it("mnda has both template filenames; non-mnda does not (until they are wired)", () => {
     expect(getDocument("mnda")?.coverPageFilename).toBe("mutual-nda-coverpage.md");
     expect(getDocument("mnda")?.standardTermsFilename).toBe("mutual-nda.md");
     for (const d of REGISTRY) {

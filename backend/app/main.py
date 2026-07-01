@@ -32,15 +32,15 @@ from .db import (
     list_documents as db_list_documents,
     update_document as db_update_document,
 )
-from .documents import fallback_message, is_supported
+from .documents import is_known
 
 
 class ChatRequest(BaseModel):
     messages: list[dict]
-    # Defaults to "mnda" so existing callers stay compatible. Only "mnda"
-    # invokes the LLM today; other ids trigger the static fallback path
-    # in `post_chat` (see `app/documents.py`).
-    document_type: str = "mnda"
+    # Optional: the LLM picks the document from the user's message. The
+    # client can pass a hint to bias the LLM's choice (e.g. after the
+    # user has explicitly picked a doc type), but it's never required.
+    document_type: str | None = None
 
 
 class Credentials(BaseModel):
@@ -141,15 +141,14 @@ async def post_logout() -> JSONResponse:
 
 @app.post("/api/chat")
 async def post_chat(request: Request, body: ChatRequest) -> JSONResponse:
-    """Run one chat turn. For "mnda" the LLM drafts fields; for any other
-    document type we return a static fallback message explaining the
-    closest supported document."""
+    """Run one chat turn. The LLM picks the document type from the user's
+    message and returns the chosen id alongside the field snapshot and
+    assistant reply. Every supported id is LLM-callable; unknown ids 400.
+    """
     _user_or_401(request)
-    if not is_supported(body.document_type):
-        return JSONResponse(
-            {"fields": None, "assistant_message": fallback_message(body.document_type)}
-        )
-    turn = ai_chat(body.messages)
+    if body.document_type is not None and not is_known(body.document_type):
+        raise HTTPException(status_code=400, detail="unknown document type")
+    turn = ai_chat(body.messages, hint=body.document_type)
     return JSONResponse(turn.model_dump())
 
 
@@ -174,14 +173,15 @@ async def get_documents(request: Request) -> JSONResponse:
 @app.post("/api/documents")
 async def post_document(request: Request, body: CreateDocumentRequest) -> JSONResponse:
     uid = _user_or_401(request)
-    if not is_supported(body.document_type):
-        raise HTTPException(status_code=400, detail="unsupported document type")
+    if not is_known(body.document_type):
+        raise HTTPException(status_code=400, detail="unknown document type")
     # Validate data against the per-doc schema. Today only MNDA is wired
     # so NdaFields is the one validator. Other types will land in PL-7+.
-    try:
-        NdaFields.model_validate(body.data)
-    except ValidationError as e:
-        raise HTTPException(status_code=422, detail=json.loads(e.json()))
+    if body.document_type == "mnda":
+        try:
+            NdaFields.model_validate(body.data)
+        except ValidationError as e:
+            raise HTTPException(status_code=422, detail=json.loads(e.json()))
     data_json = json.dumps(body.data)
     doc_id = create_document(uid, body.document_type, data_json)
     return JSONResponse({"id": doc_id, "document_type": body.document_type})
@@ -209,12 +209,13 @@ async def put_document(
     doc_id: int, request: Request, body: CreateDocumentRequest
 ) -> JSONResponse:
     uid = _user_or_401(request)
-    if not is_supported(body.document_type):
-        raise HTTPException(status_code=400, detail="unsupported document type")
-    try:
-        NdaFields.model_validate(body.data)
-    except ValidationError as e:
-        raise HTTPException(status_code=422, detail=json.loads(e.json()))
+    if not is_known(body.document_type):
+        raise HTTPException(status_code=400, detail="unknown document type")
+    if body.document_type == "mnda":
+        try:
+            NdaFields.model_validate(body.data)
+        except ValidationError as e:
+            raise HTTPException(status_code=422, detail=json.loads(e.json()))
     data_json = json.dumps(body.data)
     if not db_update_document(doc_id, uid, data_json):
         raise HTTPException(status_code=404, detail="document not found")

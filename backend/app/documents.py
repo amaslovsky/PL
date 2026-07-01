@@ -1,10 +1,9 @@
 """Document registry mirroring frontend/lib/documents/registry.ts.
 
-The FE registry is the source of truth for display data; this module is the
-BE's narrow slice (id + display name + wired flag + closest-match slug).
-It deliberately does not duplicate descriptions or filenames — those are
-FE-only. Keep the id set identical to the FE registry; `test_documents.py`
-asserts that.
+Both FE and BE share the same id set and one-line descriptions — the BE
+prompt uses the description to let the LLM pick which document the user
+is asking for. Keep the id set identical to the FE registry; tests assert
+that.
 """
 
 from dataclasses import dataclass
@@ -14,8 +13,7 @@ from dataclasses import dataclass
 class DocEntry:
     id: str
     display_name: str
-    wired: bool
-    closest_match: str
+    description: str
 
 
 # Slugs must match frontend/lib/documents/registry.ts exactly.
@@ -23,68 +21,57 @@ REGISTRY: dict[str, DocEntry] = {
     "mnda": DocEntry(
         "mnda",
         "Mutual Non-Disclosure Agreement",
-        True,
-        "mnda",
+        "Bidirectional confidential information exchange between two parties.",
     ),
     "cloud-service-agreement": DocEntry(
         "cloud-service-agreement",
         "Cloud Service Agreement",
-        False,
-        "mnda",
+        "Buying and selling cloud software or SaaS products, with standard terms referenced from a signed Cover Page.",
     ),
     "service-level-agreement": DocEntry(
         "service-level-agreement",
         "Service Level Agreement",
-        False,
-        "cloud-service-agreement",
+        "Uptime, support, and service credits layered onto a Cloud Service Agreement.",
     ),
     "professional-services-agreement": DocEntry(
         "professional-services-agreement",
         "Professional Services Agreement",
-        False,
-        "mnda",
+        "Engaging a vendor to deliver services, with standard terms referenced from a signed Cover Page and SOW.",
     ),
     "data-processing-agreement": DocEntry(
         "data-processing-agreement",
         "Data Processing Agreement",
-        False,
-        "mnda",
+        "Processing of personal data by a service provider on behalf of a customer.",
     ),
     "design-partner-agreement": DocEntry(
         "design-partner-agreement",
         "Design Partner Agreement",
-        False,
-        "data-processing-agreement",
+        "Engaging an early-design-partner customer for feedback in exchange for concessions.",
     ),
     "software-license-agreement": DocEntry(
         "software-license-agreement",
         "Software License Agreement",
-        False,
-        "service-level-agreement",
+        "Licensing on-premise or downloadable software, with standard terms referenced from a signed Cover Page.",
     ),
     "partnership-agreement": DocEntry(
         "partnership-agreement",
         "Partnership Agreement",
-        False,
-        "mnda",
+        "Non-equity business partnerships, with standard terms referenced from a signed Cover Page.",
     ),
     "pilot-agreement": DocEntry(
         "pilot-agreement",
         "Pilot Agreement",
-        False,
-        "mnda",
+        "Short-term test of a product or service before a longer-term deal.",
     ),
     "business-associate-agreement": DocEntry(
         "business-associate-agreement",
         "Business Associate Agreement",
-        False,
-        "mnda",
+        "HIPAA-required terms for engagements involving protected health information.",
     ),
     "ai-addendum": DocEntry(
         "ai-addendum",
         "AI Addendum",
-        False,
-        "mnda",
+        "Supplemental terms for AI services and AI-generated outputs, designed to sit alongside a CSA or SLA.",
     ),
 }
 
@@ -93,23 +80,5 @@ def get_doc(doc_id: str) -> DocEntry | None:
     return REGISTRY.get(doc_id)
 
 
-def is_supported(doc_id: str) -> bool:
-    entry = REGISTRY.get(doc_id)
-    return entry is not None and entry.wired
-
-
-def fallback_message(doc_id: str) -> str:
-    """User-facing explanation returned when `document_type` is not wired."""
-    entry = REGISTRY.get(doc_id)
-    if entry is None:
-        return (
-            "We don't recognize that document. From the home page you can "
-            "pick the Mutual NDA, which we draft today."
-        )
-    target = REGISTRY.get(entry.closest_match)
-    target_name = target.display_name if target else entry.closest_match
-    return (
-        f"We can't yet field-fill {entry.display_name}. "
-        f"The closest document we support is the {target_name} — "
-        "open it from the home page to start drafting."
-    )
+def is_known(doc_id: str) -> bool:
+    return doc_id in REGISTRY
