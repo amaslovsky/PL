@@ -1,0 +1,13 @@
+services:
+  web:
+    build: .
+    image: pl-app:dev
+    container_name: pl-web
+    ports:
+      - "8000:8000"
+    environment:
+      - SECRET_KEY=${SECRET_KEY:-dev-only-secret-replace-in-prod}
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
+    restart: unless-stopped
+
+volumes: {}

@@ -79,6 +79,8 @@ coverage/
 .env.test.local
 .env.production.local
 .env.*.local
+# Allow .env.example (no real secrets) to be committed
+!.env.example
 
 # ===== IDE / Editor =====
 .vscode/
