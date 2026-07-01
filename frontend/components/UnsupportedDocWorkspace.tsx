@@ -1,48 +1,39 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import type { ChatMessage } from "@/lib/api";
 import { postChat } from "@/lib/api";
-import type { NdaFormData } from "@/lib/types";
-import { fillFullNda } from "@/lib/fillTemplate";
+import type { DocumentEntry } from "@/lib/documents/registry";
+import { getDocument } from "@/lib/documents/registry";
 import { MessageBubble, ThinkingBubble } from "./Chat";
-import { NdaPreview } from "./NdaPreview";
-import { DownloadPdfButton } from "./DownloadPdfButton";
 
-interface NdaWorkspaceProps {
-  /** Raw cover-page markdown, read from disk by the server component. */
-  coverPageRaw: string;
-  /** Raw standard-terms markdown. */
-  standardTermsRaw: string;
+interface Props {
+  doc: DocumentEntry;
 }
 
+const STATIC_GREETING =
+  "Hi — I can talk through this document, but I can't yet fill in fields for it. " +
+  "Open the closest match on the right to draft a related agreement.";
+
 /**
- * Top-level client component for the Mutual NDA prototype.
- *
- * Two-column layout: a chat assistant on the left (user + assistant bubbles,
- * input + send) and the live preview + download-PDF button on the right.
- *
- * The chat is the only way to populate fields. Each user turn hits
- * `POST /api/chat`, which returns the current best-guess values for every
- * MNDA field. The returned `fields` flow into `fillFullNda` so the preview
- * updates immediately.
+ * Workspace shown for documents the chat surface cannot yet fill.
+ * Mirrors the MNDA workspace's two-column shell so the user gets the
+ * same visual cue about which screen they're on. The right pane is a
+ * static notice pointing at the closest wired document; the chat on
+ * the left still works — every reply is the BE's static fallback.
  */
-export function NdaWorkspace({ coverPageRaw, standardTermsRaw }: NdaWorkspaceProps) {
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [data, setData] = useState<NdaFormData>(EMPTY_FORM_DATA);
+export function UnsupportedDocWorkspace({ doc }: Props) {
+  const [messages, setMessages] = useState<ChatMessage[]>([
+    { role: "assistant", content: STATIC_GREETING },
+  ]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  // Synchronous in-flight flag. The Send button is also disabled by
-  // `loading`, but `loading` flips only after React re-renders — using a
-  // ref prevents a double-click from racing two requests.
   const inFlight = useRef(false);
 
-  const filledMarkdown = useMemo(
-    () => fillFullNda(coverPageRaw, standardTermsRaw, data),
-    [coverPageRaw, standardTermsRaw, data],
-  );
+  const closest = getDocument(doc.closestMatch);
+  const closestHref = closest ? `/documents/${closest.id}` : "/";
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
@@ -52,7 +43,6 @@ export function NdaWorkspace({ coverPageRaw, standardTermsRaw }: NdaWorkspacePro
   async function send(): Promise<void> {
     const trimmed = input.trim();
     if (!trimmed || inFlight.current) return;
-
     const userMessage: ChatMessage = { role: "user", content: trimmed };
     const nextThread = [...messages, userMessage];
     setMessages(nextThread);
@@ -60,14 +50,10 @@ export function NdaWorkspace({ coverPageRaw, standardTermsRaw }: NdaWorkspacePro
     setError(null);
     inFlight.current = true;
     setLoading(true);
-
     try {
-      const reply = await postChat(nextThread, "mnda");
-      if (reply.fields) setData(reply.fields);
+      const reply = await postChat(nextThread, doc.id);
       setMessages([...nextThread, { role: "assistant", content: reply.assistant_message }]);
     } catch (e) {
-      // Roll the user message back out so the failed turn doesn't sit in
-      // the chat without ever being seen by the LLM.
       setMessages(messages);
       const msg = e instanceof Error ? e.message : "Chat failed";
       setError(msg);
@@ -83,24 +69,22 @@ export function NdaWorkspace({ coverPageRaw, standardTermsRaw }: NdaWorkspacePro
         <header className="flex items-start justify-between gap-4">
           <div>
             <h1 className="text-2xl font-semibold tracking-tight text-zinc-900">
-              Mutual NDA
+              {doc.displayName}
             </h1>
             <p className="mt-1 text-sm leading-relaxed text-zinc-500">
-              Tell the assistant about the two parties and the deal. The
-              preview updates as fields are filled in.
+              {doc.description}
             </p>
           </div>
           <button
             type="button"
             onClick={() => {
-              setMessages([]);
-              setData(EMPTY_FORM_DATA);
+              setMessages([{ role: "assistant", content: STATIC_GREETING }]);
               setError(null);
             }}
-            disabled={loading || messages.length === 0}
+            disabled={loading}
             className="rounded border border-zinc-300 bg-white px-3 py-1 text-xs font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
           >
-            Start over
+            Reset chat
           </button>
         </header>
 
@@ -108,13 +92,6 @@ export function NdaWorkspace({ coverPageRaw, standardTermsRaw }: NdaWorkspacePro
           ref={scrollRef}
           className="min-h-0 flex-1 space-y-3 overflow-y-auto rounded-lg border border-zinc-200 bg-white p-5 shadow-sm"
         >
-          {messages.length === 0 && (
-            <div className="rounded-md border border-dashed border-zinc-200 bg-zinc-50/60 p-4 text-sm leading-relaxed text-zinc-600">
-              Try starting with: <span className="italic">&ldquo;Acme Inc.
-              and BetaCo are evaluating a partnership, effective June 30,
-              2026, governed by Delaware law.&rdquo;</span>
-            </div>
-          )}
           {messages.map((m) => (
             <MessageBubble key={`${m.role}:${m.content}`} m={m} />
           ))}
@@ -135,7 +112,7 @@ export function NdaWorkspace({ coverPageRaw, standardTermsRaw }: NdaWorkspacePro
         >
           <textarea
             className="min-h-[60px] flex-1 resize-none rounded border border-zinc-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#209dd7]"
-            placeholder="Describe the parties and the deal…"
+            placeholder="Ask about this document…"
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => {
@@ -157,28 +134,32 @@ export function NdaWorkspace({ coverPageRaw, standardTermsRaw }: NdaWorkspacePro
       </div>
 
       <div className="flex min-h-0 flex-col gap-4">
-        <div className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">
-            Preview
-          </h2>
-          <DownloadPdfButton data={data} />
-        </div>
-        <div className="min-h-0 flex-1 overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-sm">
-          <NdaPreview markdown={filledMarkdown} />
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">
+          Closest match
+        </h2>
+        <div className="flex-1 rounded-lg border border-dashed border-[#ecad0a] bg-[#ecad0a]/5 p-5 text-sm leading-relaxed text-zinc-800">
+          <p className="font-semibold text-[#032147]">
+            We don&apos;t yet draft {doc.displayName} end-to-end.
+          </p>
+          <p className="mt-2">
+            The nearest document we can fill in today is{" "}
+            {closest ? (
+              <Link
+                href={closestHref}
+                className="font-medium text-[#209dd7] underline hover:opacity-80"
+              >
+                {closest.displayName}
+              </Link>
+            ) : (
+              <span className="font-medium">{doc.closestMatch}</span>
+            )}
+            . Open it to start drafting.
+          </p>
+          <p className="mt-4 text-xs text-zinc-600">
+            The full list of supported documents lives on the home page.
+          </p>
         </div>
       </div>
     </div>
   );
 }
-
-const EMPTY_FORM_DATA: NdaFormData = {
-  party1: { name: "", address: "" },
-  party2: { name: "", address: "" },
-  purpose: "",
-  effectiveDate: "",
-  effectiveDateDisplay: "",
-  ndaTerm: { mode: "expires", years: 1 },
-  confidentialityTerm: { mode: "years", years: 1 },
-  governingLaw: "",
-  jurisdiction: "",
-};
