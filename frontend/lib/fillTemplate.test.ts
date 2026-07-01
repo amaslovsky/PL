@@ -378,4 +378,10 @@ describe("fillFullNda", () => {
     // Standard-terms substitutions.
     expect(out).toContain("State of Texas");
   });
+
+  it("strips <label> annotation tags so they don't render as raw HTML", () => {
+    const out = fillFullNda(coverPageRaw, standardTermsRaw, makeData());
+    expect(out).not.toContain("<label>");
+    expect(out).not.toContain("</label>");
+  });
 });

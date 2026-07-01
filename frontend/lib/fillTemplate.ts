@@ -162,6 +162,15 @@ export function fillStandardTerms(raw: string, data: NdaFormData): string {
 // ============================================================================
 
 /**
+ * Strip `<label>…</label>` annotation tags left over from the Common Paper
+ * source. They were meant as accessibility hints in the original
+ * document, but render as raw text in the Markdown preview and PDF.
+ */
+function stripLabelTags(src: string): string {
+  return src.replace(/<label>[^<]*<\/label>/g, "");
+}
+
+/**
  * Produce the full NDA as a single markdown string for the on-screen
  * preview. The cover page comes first, then a horizontal rule, then the
  * standard terms.
@@ -171,5 +180,7 @@ export function fillFullNda(
   standardTermsRaw: string,
   data: NdaFormData,
 ): string {
-  return `${fillCoverPage(coverPageRaw, data)}\n\n---\n\n${fillStandardTerms(standardTermsRaw, data)}`;
+  const cover = stripLabelTags(fillCoverPage(coverPageRaw, data));
+  const terms = stripLabelTags(fillStandardTerms(standardTermsRaw, data));
+  return `${cover}\n\n---\n\n${terms}`;
 }

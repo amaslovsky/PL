@@ -169,7 +169,7 @@ export function NdaForm({ data, onChange }: NdaFormProps) {
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section>
-      <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-zinc-500">
+      <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-zinc-700">
         {title}
       </h3>
       <div className="space-y-3">{children}</div>
@@ -196,8 +196,8 @@ function PartyFields({
   onChange: (patch: Partial<Party>) => void;
 }) {
   return (
-    <fieldset className="rounded border border-zinc-200 p-3">
-      <legend className="px-1 text-xs font-medium text-zinc-500">{heading}</legend>
+    <fieldset className="rounded-md border border-zinc-200 bg-zinc-50/60 p-3">
+      <legend className="px-1 text-xs font-medium text-zinc-600">{heading}</legend>
       <div className="space-y-2">
         <Field label="Name">
           <input
