@@ -7,6 +7,12 @@ import type { NdaFormData } from "@/lib/types";
 
 interface DownloadPdfButtonProps {
   data: NdaFormData;
+  /**
+   * Optional async hook fired before the download starts — used by
+   * `NdaWorkspace` to auto-save the draft so a downloaded PDF always
+   * shows up in the user's "My drafts" list.
+   */
+  onBeforeDownload?: () => void | Promise<void>;
 }
 
 /**
@@ -14,13 +20,17 @@ interface DownloadPdfButtonProps {
  * built client-side via `@react-pdf/renderer`'s `pdf().toBlob()` — no
  * server round-trip.
  */
-export function DownloadPdfButton({ data }: DownloadPdfButtonProps) {
+export function DownloadPdfButton({ data, onBeforeDownload }: DownloadPdfButtonProps) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const handleClick = async () => {
     setBusy(true);
     setError(null);
+    // Auto-save is best-effort: `onBeforeDownload` is expected to swallow
+    // its own errors and surface them in the workspace's UI so the user
+    // is never blocked from getting the PDF they asked for.
+    if (onBeforeDownload) await onBeforeDownload();
     try {
       const blob = await pdf(<NdaPdfDocument data={data} />).toBlob();
       const url = URL.createObjectURL(blob);
@@ -48,7 +58,7 @@ export function DownloadPdfButton({ data }: DownloadPdfButtonProps) {
         type="button"
         onClick={handleClick}
         disabled={busy}
-        className="rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
+        className="rounded bg-[#209dd7] px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-[#1b8bc0] disabled:cursor-not-allowed disabled:opacity-50"
       >
         {busy ? "Generating…" : "Download PDF"}
       </button>

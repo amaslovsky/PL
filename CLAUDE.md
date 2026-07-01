@@ -55,16 +55,16 @@ uv add --optional dev <pkg>              # add a dev dep (use this for pytest, e
 ### Two-process app behind one container
 
 - **Frontend** is a Next.js 16 app built with `output: 'export'` (`frontend/next.config.ts`). The build emits plain HTML/JS into `frontend/out`, which is then copied into the Python image and served as static files by FastAPI. There is no Next.js server in the runtime container.
-- **Backend** is a FastAPI app (`backend/app/main.py`) using `itsdangerous` for signed cookies. The cookie value is a `URLSafeTimedSerializer`-signed `{uid}` payload with a 7-day max age.
-- **DB** is SQLite at `$DB_PATH`. The `users` table is the only schema today; `init_db()` runs on FastAPI `lifespan` startup, and the container's entrypoint deletes the file on every start so the schema is fresh.
+- **Backend** is a FastAPI app (`backend/app/main.py`) using `itsdangerous` for signed cookies and `bcrypt` for password hashing. The cookie value is a `URLSafeTimedSerializer`-signed `{uid}` payload with a 7-day max age. Passwords are stored as bcrypt hashes; login verifies via `bcrypt.checkpw`.
+- **DB** is SQLite at `$DB_PATH`. The `users(id, email UNIQUE, password_hash, created_at)` and `documents(id, user_id, document_type, data_json, created_at, updated_at)` tables are created by `init_db()` on FastAPI `lifespan` startup, and the container's entrypoint deletes the file on every start so the schema is fresh (matches PL-7's "database can be temporary" note).
 
-### Fake auth (will be replaced)
+### Auth
 
-Any email + any password is accepted by `POST /api/auth/login`. The email is upserted into `users` and the resulting id is signed into the `pl_session` cookie. `GET /api/auth/me` returns `{authenticated, user_id?}`; the SPA uses it to gate `/`. This is a placeholder for real auth (signup/signin/JWT) — keep all auth logic in `backend/app/auth.py` so the swap is local.
+Real auth lives in `backend/app/auth.py`. `POST /api/auth/signup` hashes the password and inserts a user row; `POST /api/auth/login` reads the row and `bcrypt.checkpw`s. Both responses set the `pl_session` cookie. Passwords must be at least 8 chars (Pydantic validator). Duplicate email returns 409. `GET /api/auth/me` resolves the cookie to a user row and returns `{authenticated, user_id, email}`; this is what the SPA `Header` uses to render email + sign-out. The `Header` is a client component calling `/api/auth/me` on mount — keeping it client-only avoids `headers()` in the root layout, which would break `output: "export"`.
 
 ### Static-asset routing precedence
 
-`/login` and the auth API are real FastAPI routes. `/_next/*` is mounted as a `StaticFiles` directory. Everything else falls through to `get_spa`, which tries `<path>`, `<path>.html`, then `<path>/index.html` from `STATIC_DIR`, finally returning `index.html` for SPA routing. The `/_next` mount MUST be registered before the `/{full_path:path}` catch-all or it loses to the path parameter.
+`/_next/*` is mounted as a `StaticFiles` directory. Everything else falls through to `get_spa`, which tries `<path>`, `<path>.html`, then `<path>/index.html` from `STATIC_DIR`, finally returning `index.html` for SPA routing. The `/_next` mount MUST be registered before the `/{full_path:path}` catch-all or it loses to the path parameter. There is no FastAPI `/login` route anymore — that path is served by the SPA catch-all.
 
 ### Mutual NDA prototype (PL-3 + PL-5)
 
@@ -84,6 +84,13 @@ Any email + any password is accepted by `POST /api/auth/login`. The email is ups
 - `frontend/components/UnsupportedDocWorkspace.tsx` mirrors the two-column MNDA shell for unwired docs. The chat still works; every reply is the BE's static fallback. The right pane is a tinted yellow notice with a link to the closest wired match.
 - `backend/app/documents.py` mirrors the registry (id, display_name, wired, closest_match). `app/main.py`'s `POST /api/chat` reads an optional `document_type` field; non-MNDA ids return `{fields: null, assistant_message: <static fallback>}` without calling the LLM. PL-7+ will introduce per-doc schemas and call the LLM for additional types.
 
+### Saved drafts (PL-7)
+
+- `POST /api/documents` validates `body.document_type` against `is_supported()` (`backend/app/documents.py`) and `body.data` against the per-doc Pydantic schema — today that's `NdaFields` (re-used as both the LLM response shape and the storage validation). New docs hang their own schema off the registry in PL-7+.
+- `data` is stored as JSON in `documents.data_json`; the server doesn't second-guess the shape on read.
+- `NdaWorkspace` ships a `Save draft` button next to `Start over`. `DownloadPdfButton` accepts an `onBeforeDownload` hook that the workspace passes its `saveDraft` to, so PDFs always end up listed on `/my-documents`.
+- `/my-documents` is a client-rendered page (no `headers()` on the server) that calls `/api/documents` and lists the signed-in user's drafts.
+
 ### Templates
 
 `frontend/templates/` holds checked-in copies of the two MNDA markdown files (hermetic build). The canonical sources live in `templates/` at the project root, listed by `catalog.json` (CC BY 4.0 from Common Paper). Adding a new document type = adding entries to `catalog.json` and `templates/`, plus a new fill function in `lib/` that follows the literal-substitution rule above.
@@ -96,7 +103,7 @@ The available documents are covered in the catalog.json file in the project root
 
 @catalog.json
 
-The current implementation supports one document type (Mutual NDA) via an AI chat prototype with live preview and PDF download, served behind fake login. The remaining 11 templates, real auth, and document persistence are not yet wired up.
+The chat surface is routed to all 11 registered documents via `/documents/<id>`; today only the Mutual NDA is wired (full AI chat → live preview → PDF download), the other 10 reply with a static closest-match fallback message. Served behind real auth (email + bcrypt password, 7-day session cookie). Drafts save to a per-user SQLite table so the user can return to them via `/my-documents`. The disclaimer footer and chrome appear on every page.
 
 ## Development process
 
@@ -194,22 +201,47 @@ Backend available at http://localhost:8000
 - Smoke-tested end-to-end via Docker: landing shows 11 cards; `/documents/mnda` drafts via LLM; `/documents/cloud-service-agreement` returns the static fallback message with closest-match link to MNDA.
 
 ### Current API Endpoints
-- `GET /login` - Fake login page (HTML)
-- `POST /api/auth/login` - Accept any email/password, set signed session cookie, 303 to /
-- `GET /api/auth/me` - JSON `{authenticated: bool, user_id?: int}`
-- `POST /api/auth/logout` - Clear cookie, 303 to /login
+- `POST /api/auth/signup` - Body `{email, password}`. Bcrypt-hashes the password, inserts the user, sets the `pl_session` cookie. 409 on duplicate email; 422 on password < 8 chars.
+- `POST /api/auth/login` - Body `{email, password}`. Verifies credentials, sets the cookie. 401 on bad credentials.
+- `GET /api/auth/me` - JSON `{authenticated: bool, user_id?: int, email?: str}`. 401 if no cookie.
+- `POST /api/auth/logout` - Clears the cookie, returns `{ok: true}`.
 - `POST /api/chat` - Body: `{messages: [{role, content}], document_type?: str}`. Returns `{fields: NdaFormData | null, assistant_message: str}`. 401 if unauthenticated. `document_type` defaults to `"mnda"`; any other id triggers a static fallback response (no LLM call).
+- `GET /api/documents` - Lists the signed-in user's saved drafts (newest first). 401 if unauthenticated.
+- `POST /api/documents` - Body `{document_type: str, data: dict}`. Validates against the per-doc schema (`NdaFields` for MNDA today). 422 on schema failure, 400 on unsupported type.
+- `GET /api/documents/<id>` - Single document. 404 if missing or not the owner.
+- `PUT /api/documents/<id>` - Updates the document's data_json.
+- `DELETE /api/documents/<id>` - Removes the document. 404 if missing or not the owner.
 - `GET /` - Serves Next.js landing if authed, else 303 to /login
-- `GET /documents/<id>` - Document picker route (PL-6). One HTML file per registered slug (11 today); MNDA wires the chat workspace, others show the closest-match notice.
+- `GET /documents/<id>` - One HTML file per registered slug (11 today); MNDA wires the chat workspace, others show the closest-match notice.
+- `GET /login` - SPA sign-in screen (Next.js).
+- `GET /signup` - SPA sign-up screen (Next.js).
+- `GET /my-documents` - SPA drafts list, client-side fetch via cookie.
 - `GET /mutual-nda` - Alias of `/documents/mnda`; renders the same MNDA workspace.
 - `GET /_next/*` - Next.js static assets
 
 ### Upcoming
-- Real auth (signup/signin/JWT) — replaces fake login
 - Additional wired documents (PL-7+). The 10 unwired catalog entries are routed via `/documents/<id>` and answered with a closest-match message; wire each one in its own PR by adding its cover page + standard terms to `templates/` and `frontend/templates/`, extending the FE registry, and (if needed) the BE registry + chat schemas.
-- Document persistence (save/load to SQLite)
+- Password recovery flow (no SMTP today).
+- Re-opening a saved draft into the chat workspace (the `/my-documents` `Open` link currently just sends the user back to `/documents/<id>` without rehydrating state).
+
+### Completed (PL-7)
+- Real auth (replaces the PL-4 fake login):
+  - `backend/app/auth.py` — bcrypt password hashing + verifying via `hash_password` / `verify_password`. `authenticate(email, password) -> int | None` looks up the user and checks the hash. `find_user_by_email` / `find_user_by_id` added in `backend/app/db.py` for `/api/auth/me` to surface the email.
+  - `POST /api/auth/signup` and `POST /api/auth/login` switched from form-encoded to JSON; both set the same `pl_session` cookie on success. `signup` returns 409 on duplicate email, 422 on password < 8 chars. `login` returns 401 on bad creds. `logout` clears the cookie.
+  - The server-rendered `/login` HTML (`backend/app/login_page.py`) was removed; `/login`, `/signup`, `/my-documents` are now SPA routes (Next.js, static-exported).
+- Document storage:
+  - `documents(user_id, document_type, data_json, created_at, updated_at)` SQLite table + index on `user_id`. Schema lives in `init_db()` (DB is wiped on container start, matching the PL-7 description).
+  - `POST /api/documents`, `GET /api/documents`, `GET /api/documents/<id>`, `PUT /api/documents/<id>`, `DELETE /api/documents/<id>`. Data is validated against the per-doc Pydantic schema (`NdaFields` for MNDA today; other entries will add their own schema in PL-7+).
+  - `NdaWorkspace` gets a "Save draft" button next to "Start over". `DownloadPdfButton` accepts an `onBeforeDownload` hook and the workspace passes its `saveDraft` to it, so PDF downloads automatically persist the latest `data`.
+- Final polish:
+  - Global `Header` (logo + Documents + My drafts nav + email/Sign out) and `Footer` (disclaimer line) components, mounted in `frontend/app/layout.tsx` so every page renders chrome.
+  - `Download PDF` button now uses the project blue (`#209dd7`) instead of `bg-blue-600` to match the design tokens.
+  - Disclaimer banner ("Draft template only — not legal advice. Subject to legal review before use.") appears above the preview pane in `NdaWorkspace` and as the footer copy on every page.
+- 22 new tests: 8 BE auth (signup/login/me/logout happy paths + 409/401/422 edges), 7 BE documents (auth required, list/get cross-user 404, delete, schema validation 422, unsupported type 400), 7 FE api helpers (signUp, signIn, saveDocument, listSavedDocuments wiring); total suite 66 FE + 23 BE = 89 passing.
+- Static export builds clean: 18 routes prerendered (4 new: `/login`, `/signup`, `/my-documents`; previously 14). Manual smoke checklist extended in `frontend/TESTING.md`.
 
 ### Implementation Update
+- **Multiple users & final polish (2026-07-01, PL-7):** Replaced fake login with bcrypt-hashed email+password sign-up/sign-in; added per-user document storage behind `GET/POST/PUT/DELETE /api/documents`; added `/login`, `/signup`, `/my-documents` SPA routes plus a global `Header`/`Footer` and a tinted disclaimer banner on the preview pane. The `Download PDF` button auto-saves the draft before downloading, so every PDF also shows up on `/my-documents`. Data validation on `POST/PUT /api/documents` re-uses the per-doc Pydantic schema (today `NdaFields`); unsupported types get 400, schema failures get 422. Auth flows tested at 8 BE + 7 BE = 15; api-helper plumbing tested at 4 FE. Suite now 66 FE + 23 BE = 89 passing; static export produces 18 routes.
 - **Multi-document surface (2026-07-01, PL-6):** Lifted the chat surface from MNDA-only to all 11 registered documents via a `DocumentRegistry` and one dynamic route (`/documents/[type]`) with `generateStaticParams`. The other 10 entries get an `UnsupportedDocWorkspace` that explains the closest wired match in the right pane and keeps the chat functional; the backend returns `{fields: null, assistant_message: <static>}` for any non-MNDA `document_type` (no LLM call). `/mutual-nda` alias kept as a thin render-path wrapper. New pytest dev group added in `[project.optional-dependencies].dev` so Docker's `uv sync --frozen --no-dev` stays slim. Test suite at 61 FE + 8 BE = 69 passing (14 new FE + 8 new BE); static export produces 11 doc HTML files plus the alias; container smoke-test confirms MNDA chat still works, `/documents/csa` returns the static fallback message, unknown ids receive a generic fallback.
 - **AI chat (2026-07-01, PL-5):** Form-driven MNDA prototype replaced with a freeform chat. Backend `POST /api/chat` calls `gpt-oss-120b` via LiteLLM + Cerebras using structured outputs and returns the current best-guess values for every MNDA field plus a short assistant reply. The returned fields flow into the existing `fillFullNda` + `NdaPdfDocument` pipeline — preview and PDF download unchanged. Test suite at 47/47 passing; static export builds clean; container rebuilds and the chat endpoint returns the expected structured payload end-to-end. Merged to `main` as commit `44f078c` (no-ff merge of `feature/PL-5-ai-chat` `51707cf`).
 - **MNDA polish (2026-07-01, PL-4):** `<label>` tags stripped in `fillFullNda` (covered by a regression test); workspace redesigned with independent vertical scrolling per column, light-gray page background, white rounded cards, and improved text styles. Test suite at 51/51 passing; static export builds clean. Merged to `main` as commit `1784564` (no-ff merge of `feature/PL-4-foundation` `8923a15`).
