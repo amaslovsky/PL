@@ -238,6 +238,58 @@ describe("fillCoverPage", () => {
 });
 
 // ============================================================================
+// `<label>` caption rendering
+// ============================================================================
+//
+// The Common Paper source uses inline `<label>…</label>` tags as
+// captions under each heading. Plain-markdown renderers HTML-escape
+// these (`<label>…</label>` → literal text in the preview), so
+// `fillCoverPage` converts them to italic markdown (`*…*`).
+
+describe("fillCoverPage label-tag rendering", () => {
+  it("strips every <label>...</label> tag from the cover page", () => {
+    const out = fillCoverPage(coverPageRaw, makeData());
+    expect(out).not.toMatch(/<label>/);
+    expect(out).not.toMatch(/<\/label>/);
+  });
+
+  it("renders each captured caption as italic markdown", () => {
+    const out = fillCoverPage(coverPageRaw, makeData());
+    // The four captions shipped in the canonical Common Paper cover page:
+    expect(out).toContain("*How Confidential Information may be used*");
+    expect(out).toContain("*The length of this MNDA*");
+    expect(out).toContain("*How long Confidential Information is protected*");
+    expect(out).toContain("*Use either email or postal address*");
+  });
+
+  it("places each caption on its own line (no leftover line break junk)", () => {
+    const out = fillCoverPage(coverPageRaw, makeData());
+    // Caption line should be its own paragraph, not glued to other content.
+    expect(out).toMatch(/\n\*The length of this MNDA\*\n/);
+  });
+
+  it("is idempotent: re-stripping yields the same output", () => {
+    const once = fillCoverPage(coverPageRaw, makeData());
+    const twice = fillCoverPage(once, makeData());
+    expect(twice).toBe(once);
+  });
+
+  it("does not strip user-injected `<label>` text from party names", () => {
+    // The label strip runs on the source template BEFORE user data is
+    // injected, so a user-injected `<label>...</label>` in their party
+    // name passes through literally.
+    const data = makeData({
+      party1: {
+        name: "<label>not a caption</label> Acme",
+        address: "123 Main St",
+      },
+    });
+    const out = fillCoverPage(coverPageRaw, data);
+    expect(out).toContain("<label>not a caption</label> Acme");
+  });
+});
+
+// ============================================================================
 // fillStandardTerms
 // ============================================================================
 

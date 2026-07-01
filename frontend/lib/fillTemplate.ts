@@ -34,6 +34,15 @@ const TODAY_BRACKET = "[Today’s date]";
 const NDA_TERM_YEARS_BRACKETS_RE = /Expires \[\d+ year\(s\)\]/g;
 const CONF_TERM_YEARS_BRACKETS_RE = / \[\d+ year\(s\)\] from Effective Date/g;
 
+// The Common Paper source uses inline `<label>...</label>` tags as
+// captions under each heading (Purpose, MNDA Term, Term of
+// Confidentiality, Notice Address). Plain-markdown renderers — including
+// `react-markdown` without `rehype-raw` — HTML-escape these and render
+// the literal `<label>` text in the preview. Convert each caption into
+// italic markdown (`*caption*`) so it renders as a styled caption
+// without adding an HTML plugin.
+const LABEL_TAG_RE = /<label>([^<]+)<\/label>/g;
+
 // Checkbox-pair matchers. Each matches BOTH checkbox states (`[x]` or
 // `[ ]`), so the same pattern works whether the input is the raw source or
 // a previously filled string with the opposite selection.
@@ -59,6 +68,7 @@ export function fillCoverPage(raw: string, data: NdaFormData): string {
   // same substitution patterns work whether the input is the source
   // template or a previously filled string.
   out = out
+    .replace(LABEL_TAG_RE, (_, caption) => `*${caption}*`)
     .replace(NDA_TERM_YEARS_BRACKETS_RE, (m) => m.replace(/[[\]]/g, ""))
     .replace(CONF_TERM_YEARS_BRACKETS_RE, (m) => m.replace(/[[\]]/g, ""));
 
