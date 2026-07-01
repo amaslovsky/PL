@@ -18,11 +18,16 @@ from .ai import chat as ai_chat
 from .auth import COOKIE_NAME, MAX_AGE, current_user_id, login, make_cookie_value
 from .config import STATIC_DIR
 from .db import init_db
+from .documents import fallback_message, is_supported
 from .login_page import LOGIN_HTML
 
 
 class ChatRequest(BaseModel):
     messages: list[dict]
+    # Defaults to "mnda" so existing callers stay compatible. Only "mnda"
+    # invokes the LLM today; other ids trigger the static fallback path
+    # in `post_chat` (see `app/documents.py`).
+    document_type: str = "mnda"
 
 
 STATIC = Path(STATIC_DIR)
@@ -80,10 +85,15 @@ async def post_logout() -> RedirectResponse:
 
 @app.post("/api/chat")
 async def post_chat(request: Request, body: ChatRequest) -> JSONResponse:
-    """Run one chat turn against the MNDA-drafting LLM and return the
-    current best-guess fields plus the assistant's reply."""
+    """Run one chat turn. For "mnda" the LLM drafts fields; for any other
+    document type we return a static fallback message explaining the
+    closest supported document."""
     if current_user_id(request) is None:
         raise HTTPException(status_code=401, detail="not authenticated")
+    if not is_supported(body.document_type):
+        return JSONResponse(
+            {"fields": None, "assistant_message": fallback_message(body.document_type)}
+        )
     turn = ai_chat(body.messages)
     return JSONResponse(turn.model_dump())
 
