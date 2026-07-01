@@ -8,7 +8,7 @@ The available documents are covered in the catalog.json file in the project root
 
 @catalog.json
 
-The current implementation supports all 11 document types via AI chat with full user authentication and document persistence.
+The current implementation supports one document type (Mutual NDA) via a form-based prototype with live preview and PDF download, served behind fake login. The remaining 10 templates, AI chat drafting, real auth, and document persistence are not yet wired up.
 
 ## Development process
 
@@ -61,7 +61,7 @@ Backend available at http://localhost:8000
 
 ### Completed (PL-3)
 - Next.js 16 prototype: Mutual NDA form with live preview and PDF download
-- Vitest unit tests (55 passing) covering fill logic, date utils, term phrasing, PDF regression
+- Vitest unit tests (51 passing; 50 baseline + 1 label-strip regression) covering fill logic, date utils, term phrasing, PDF regression
 
 ### Completed (PL-4)
 - V1 technical foundation:
@@ -72,6 +72,11 @@ Backend available at http://localhost:8000
   - Next.js `output: 'export'`, static build served by FastAPI on port 8000
   - Docker multi-stage build (Node builder, Python runtime with uv)
   - `scripts/` start/stop wrappers for Mac, Linux, Windows
+- MNDA workspace polish:
+  - `<label>` annotation tags stripped from Common Paper source before render
+  - Independent vertical scrolling for form and preview panes (fixed-height page, each column scrolls inside its own card)
+  - Light-gray page background, white rounded cards with subtle shadow
+  - Improved text styles: relaxed leading, prose-zinc preview, soft-tinted party fieldsets
 
 ### Current API Endpoints
 - `GET /login` - Fake login page (HTML)
@@ -85,5 +90,8 @@ Backend available at http://localhost:8000
 ### Upcoming
 - Real auth (signup/signin/JWT) — replaces fake login
 - AI chat drafting — LiteLLM via OpenRouter/Cerebras (gpt-oss-120b)
-- All 11 document types from catalog.json
+- Remaining 10 document types from catalog.json (only MNDA is wired up today)
 - Document persistence (save/load to SQLite)
+
+### Implementation Update
+- **MNDA polish (2026-07-01):** `<label>` tags stripped in `fillFullNda` (covered by a regression test); workspace redesigned with independent vertical scrolling per column, light-gray page background, white rounded cards, and improved text styles. Test suite at 51/51 passing; static export builds clean. Merged to `main` as commit `1784564` (no-ff merge of `feature/PL-4-foundation` `8923a15`).
