@@ -6,4 +6,6 @@ requires-python = ">=3.13"
 dependencies = [
     "fastapi[standard]>=0.138.2",
     "itsdangerous>=2.2.0",
+    "litellm>=1.55.0",
+    "pydantic>=2.9.0",
 ]

@@ -4,9 +4,6 @@
 // substitution code (`lib/fillTemplate.ts`) and the PDF renderer
 // (`pdf/NdaPdfDocument.tsx`) both consume the same `NdaFormData`.
 
-export type NdaTermMode = "expires" | "continues";
-export type ConfidentialityTermMode = "years" | "perpetuity";
-
 export interface Party {
   name: string;
   address: string;
@@ -21,12 +18,12 @@ export interface NdaFormData {
   /** Human-readable date, e.g. "June 30, 2026". */
   effectiveDateDisplay: string;
   ndaTerm: {
-    mode: NdaTermMode;
+    mode: "expires" | "continues";
     /** Used only when `mode === "expires"`. */
     years: number;
   };
   confidentialityTerm: {
-    mode: ConfidentialityTermMode;
+    mode: "years" | "perpetuity";
     /** Used only when `mode === "years"`. */
     years: number;
   };

@@ -1,10 +1,10 @@
-"""FastAPI app: fake login, auth API, and static SPA serving."""
+"""FastAPI app: fake login, auth API, AI chat, and static SPA serving."""
 
 import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, Form, Request
+from fastapi import FastAPI, Form, HTTPException, Request
 from fastapi.responses import (
     FileResponse,
     HTMLResponse,
@@ -12,16 +12,28 @@ from fastapi.responses import (
     RedirectResponse,
 )
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
 
+from .ai import chat as ai_chat
 from .auth import COOKIE_NAME, MAX_AGE, current_user_id, login, make_cookie_value
 from .config import STATIC_DIR
 from .db import init_db
 from .login_page import LOGIN_HTML
 
+
+class ChatRequest(BaseModel):
+    messages: list[dict]
+
+
 STATIC = Path(STATIC_DIR)
 
 # `secure=True` only takes effect over HTTPS. Default off so dev works over HTTP.
 COOKIE_SECURE = os.getenv("COOKIE_SECURE", "0") == "1"
+
+if not os.getenv("OPENROUTER_API_KEY"):
+    # Fail fast at import time. The chat route would otherwise 500 on every
+    # request when the operator forgets to configure `.env`.
+    raise RuntimeError("OPENROUTER_API_KEY is not set. Add it to the project-root .env.")
 
 
 @asynccontextmanager
@@ -64,6 +76,16 @@ async def post_logout() -> RedirectResponse:
     response = RedirectResponse(url="/login", status_code=303)
     response.delete_cookie(COOKIE_NAME, path="/")
     return response
+
+
+@app.post("/api/chat")
+async def post_chat(request: Request, body: ChatRequest) -> JSONResponse:
+    """Run one chat turn against the MNDA-drafting LLM and return the
+    current best-guess fields plus the assistant's reply."""
+    if current_user_id(request) is None:
+        raise HTTPException(status_code=401, detail="not authenticated")
+    turn = ai_chat(body.messages)
+    return JSONResponse(turn.model_dump())
 
 
 @app.get("/login", response_class=HTMLResponse)
