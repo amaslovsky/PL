@@ -14,7 +14,7 @@ interface NdaPreviewProps {
  */
 export function NdaPreview({ markdown }: NdaPreviewProps) {
   return (
-    <div className="prose prose-sm max-w-none overflow-y-auto rounded border border-zinc-200 bg-white p-6">
+    <div className="prose prose-sm prose-zinc h-full max-w-none overflow-y-auto px-8 py-6 leading-relaxed">
       <ReactMarkdown remarkPlugins={[remarkGfm]}>{markdown}</ReactMarkdown>
     </div>
   );

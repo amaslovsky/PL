@@ -33,30 +33,34 @@ export function NdaWorkspace({ coverPageRaw, standardTermsRaw }: NdaWorkspacePro
   };
 
   return (
-    <div className="mx-auto grid min-h-screen max-w-7xl grid-cols-1 gap-6 p-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-      <div className="space-y-4">
+    <div className="mx-auto grid h-screen max-w-7xl grid-cols-1 gap-6 overflow-hidden p-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+      <div className="flex min-h-0 flex-col gap-4">
         <header className="flex items-start justify-between gap-4">
           <div>
             <h1 className="text-2xl font-semibold tracking-tight text-zinc-900">
               Mutual NDA
             </h1>
-            <p className="text-sm text-zinc-500">
+            <p className="mt-1 text-sm leading-relaxed text-zinc-500">
               Fill in the parties and terms. The preview updates live. Download
               the completed document when ready.
             </p>
           </div>
         </header>
-        <NdaForm data={data} onChange={update} />
+        <div className="min-h-0 flex-1 overflow-y-auto rounded-lg border border-zinc-200 bg-white p-5 shadow-sm">
+          <NdaForm data={data} onChange={update} />
+        </div>
       </div>
 
-      <div className="flex flex-col gap-4">
+      <div className="flex min-h-0 flex-col gap-4">
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">
             Preview
           </h2>
           <DownloadPdfButton data={data} />
         </div>
-        <NdaPreview markdown={filledMarkdown} />
+        <div className="min-h-0 flex-1 overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-sm">
+          <NdaPreview markdown={filledMarkdown} />
+        </div>
       </div>
     </div>
   );
