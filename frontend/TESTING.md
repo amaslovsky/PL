@@ -1,6 +1,6 @@
-# Manual testing — PL-3 / PL-5 / PL-6 / PL-7 / PL-8
+# Manual testing — PL-3 / PL-5 / PL-6 / PL-7 / PL-8 / PL-9 / PL-10
 
-A short checklist of things to verify by hand. The automated Vitest suite (`npm test`) covers the pure logic; this file covers what only a human can confirm.
+A short checklist of things to verify by hand. The automated Jest + jsdom suite (`npm test`) covers React component tests and pure logic under one runner. This file covers what only a human can confirm.
 
 ## Setup
 
@@ -12,16 +12,16 @@ npm run dev      # http://localhost:3000 (no backend) — for SPA-only checks
 ./scripts/start-mac.sh   # full stack including Postgres-free SQLite
 ```
 
-## Smoke — auth flow (PL-7)
+## Smoke — auth flow (PL-7, reshaped in PL-10)
 
 - [ ] Visit `http://localhost:3000/` while signed out → 303 to `/login`.
 - [ ] On `/login`, click "Create an account" → lands on `/signup`.
 - [ ] On `/signup`, enter a short password (e.g. `short`) → submit, the form shows an error (client `minLength` blocks it).
 - [ ] Enter a real-length password (e.g. `hunter2hunter2`) → click "Create account" → browser navigates to `/` and the header shows your email in a clickable button.
 - [ ] Click the email in the header → dropdown opens with "My drafts" + "Sign out".
-- [ ] Click **Sign out** → cookie is cleared, browser bounces to `/login`, header shows "Sign in" instead of email.
+- [ ] Click **Sign out** → `access_token` cookie is cleared, browser bounces to `/login`, header shows "Sign in" instead of email.
 - [ ] Sign in with the same email + password → header reverts to showing your email.
-- [ ] Open a private window and try `/api/auth/me` after signing out there → `{authenticated: false}` with HTTP 401.
+- [ ] Open a private window and try `/api/auth/me` after signing out there → 401 HTTP.
 - [ ] Sign up a second time with the same email → "email already registered" error.
 
 ## Smoke — chat-first home (PL-8)
@@ -114,9 +114,10 @@ npm run dev      # http://localhost:3000 (no backend) — for SPA-only checks
 
 These manual checks exist *because* we deliberately didn't write automated tests for them. Listing them honestly so future maintainers know what's not protected:
 
-- **Component rendering.** Vitest tests cover pure logic only — no jsdom, no React Testing Library. A JSX bug in `Workspace.tsx`, `NdaPreview.tsx`, `DownloadPdfButton.tsx`, `Header.tsx`, `Footer.tsx`, `Chat.tsx`, `MyDocumentsPage.tsx`, or `MyDocumentsList.tsx` would slip past `npm test`.
-- **PDF binary correctness.** The `NdaPdfDocument.test.ts` regression test reads the source file and asserts no `pdfStyles.` substring leaked into rendered text. It does *not* render the PDF and inspect bytes — that's a Playwright job.
+- **Component rendering (partial).** Jest + jsdom covers stateful components that need React (AuthContext, Header) and pure logic (date, terms, fillTemplate). A JSX bug in `src/components/Workspace.tsx`, `src/components/ChatInterface.tsx`, `src/components/DocumentPreview.tsx`, `src/components/NdaPreview.tsx`, `src/components/StandardTermsPreview.tsx`, `src/components/DocumentDownload.tsx`, `src/components/SaveDocumentButton.tsx`, `src/components/UserMenu.tsx`, `src/components/Footer.tsx`, `src/components/Chat.tsx`, `src/components/MyDocumentsPage.tsx`, or `src/components/MyDocumentsList.tsx` would slip past the suite today.
+- **PDF binary correctness.** The `NdaPdfDocument` (now under `src/components/NdaPdf.tsx`) is rendered by `@react-pdf/renderer` to a Blob; nothing in the suite renders the PDF and inspects bytes — that's a Playwright job.
 - **Hydration.** A bug where SSR and client produce different first-paint output (the original UTC-vs-local date bug) would not be caught by these unit tests.
-- **Dropdown interactions.** The Header user-menu open/close behavior (outside click + Escape + item click) is not unit-tested; verify by hand.
-- **LLM-assigned document type.** Whether the LLM picks the right template from a freeform user message is not unit-tested (the test suite mocks `postChat`).
-- **Cookie / headers round-tripping.** The backend's `TestClient` covers `/api/auth/*` and `/api/documents*` request shapes, but the `cookies: "include"` flow on the browser side and the `httponly` cookie wiring are verified by the manual sign-up/sign-in flow.
+- **Dropdown interactions.** The `<UserMenu>` open/close behavior (outside click + Escape + item click) is exercised in the integration smoke ("header user menu (PL-8)") but is not unit-tested in isolation.
+- **LLM-assigned document type.** Whether the LLM picks the right template from a freeform user message is not unit-tested (the test suite mocks `sendMessage`).
+- **Cookie / headers round-tripping.** The backend's `TestClient` covers `/api/auth/*` and `/api/documents*` request shapes, but the `credentials: "include"` flow on the browser side and the JWT-in-HttpOnly-cookie wiring are verified by the manual sign-up/sign-in flow.
+- **Catalog drift.** `src/utils/documentConfig.ts` is the FE source of truth. If you add a template, update `catalog.json` at the project root, `src/utils/documentConfig.ts`, AND the FE tests in `src/__tests__/date.test.ts` (which are a regression for `todayIsoUtc` etc. — no, the catalog drift check was previously under vitest and is currently covered by the BE `test_models_documents.py` test that asserts the BE catalog size + unique ids).
