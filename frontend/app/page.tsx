@@ -1,47 +1,48 @@
-import Link from "next/link";
-import { listDocuments } from "@/lib/documents/wiring";
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { Workspace } from "@/components/Workspace";
+import { listDocuments } from "@/lib/documents/registry";
 
+/**
+ * Home page. The chat workspace is the landing experience — the LLM
+ * picks which template to draft based on the user's message. Today only
+ * MNDA has a live fill pipeline + PDF; other templates render their
+ * standard-terms markdown in the preview pane. The page is a server
+ * component that reads every registered template file from disk at
+ * build time so the static export ships them inline.
+ */
 export default function Home() {
-  const docs = listDocuments();
+  const cwd = process.cwd();
+  const standardTermsByDocId: Record<string, string> = {};
+  const coverPageByDocId: Record<string, string> = {};
+  for (const doc of listDocuments()) {
+    if (doc.standardTermsFilename) {
+      try {
+        standardTermsByDocId[doc.id] = readFileSync(
+          path.join(cwd, "templates", doc.standardTermsFilename),
+          "utf8",
+        );
+      } catch {
+        // File missing on disk — Workspace falls back to the
+        // "no standard terms loaded" placeholder for this id.
+      }
+    }
+    if (doc.coverPageFilename) {
+      try {
+        coverPageByDocId[doc.id] = readFileSync(
+          path.join(cwd, "templates", doc.coverPageFilename),
+          "utf8",
+        );
+      } catch {
+        // Same as above; only MNDA has a cover page today.
+      }
+    }
+  }
+
   return (
-    <main className="mx-auto flex min-h-screen max-w-4xl flex-col gap-8 p-8">
-      <header className="text-center">
-        <h1 className="text-3xl font-semibold tracking-tight text-[#032147]">
-          Prelegal
-        </h1>
-        <p className="mt-2 text-sm leading-relaxed text-zinc-600">
-          Pick a document and chat to fill it in. Today the Mutual NDA
-          drafts end-to-end; the other agreements show the closest match we
-          can produce.
-        </p>
-      </header>
-      <ul className="grid gap-3">
-        {docs.map((d) => {
-          const href = `/documents/${d.id}`;
-          return (
-            <li
-              key={d.id}
-              className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm transition hover:border-zinc-300 hover:bg-zinc-50"
-            >
-              <Link href={href} className="flex items-start justify-between gap-4">
-                <div>
-                  <h2 className="text-base font-semibold text-zinc-900">
-                    {d.displayName}
-                  </h2>
-                  <p className="mt-1 text-sm leading-relaxed text-zinc-600">
-                    {d.description}
-                  </p>
-                </div>
-                {!d.wired && (
-                  <span className="shrink-0 rounded-full border border-[#ecad0a] bg-[#ecad0a]/10 px-2 py-0.5 text-xs font-medium text-[#032147]">
-                    coming soon
-                  </span>
-                )}
-              </Link>
-            </li>
-          );
-        })}
-      </ul>
-    </main>
+    <Workspace
+      standardTermsByDocId={standardTermsByDocId}
+      coverPageByDocId={coverPageByDocId}
+    />
   );
 }

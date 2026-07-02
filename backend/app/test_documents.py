@@ -1,25 +1,15 @@
-from app.documents import REGISTRY, get_doc, is_supported, fallback_message
+from app.documents import REGISTRY, get_doc, is_known
 
 
-def test_mnda_is_supported() -> None:
-    assert is_supported("mnda") is True
+def test_known_id_resolves() -> None:
+    assert is_known("mnda") is True
+    assert is_known("cloud-service-agreement") is True
+    assert is_known("ai-addendum") is True
 
 
-def test_cloud_service_unsupported() -> None:
-    assert is_supported("cloud-service-agreement") is False
-
-
-def test_unknown_id_unsupported() -> None:
-    assert is_supported("nope") is False
-    assert is_supported("") is False
-
-
-def test_closest_match_resolves() -> None:
-    for entry in REGISTRY.values():
-        if entry.closest_match == entry.id:
-            continue
-        target = get_doc(entry.closest_match)
-        assert target is not None, f"{entry.id} -> {entry.closest_match}"
+def test_unknown_id_is_unknown() -> None:
+    assert is_known("nope") is False
+    assert is_known("") is False
 
 
 def test_no_duplicate_ids() -> None:
@@ -33,12 +23,15 @@ def test_registry_size_matches_catalog_unique_slugs() -> None:
     assert len(REGISTRY) == 11
 
 
-def test_fallback_message_names_closest_match() -> None:
-    msg = fallback_message("cloud-service-agreement")
-    assert "Cloud Service Agreement" in msg
-    assert "Mutual Non-Disclosure Agreement" in msg
+def test_every_entry_has_display_name_and_description() -> None:
+    # The LLM uses these to pick which document the user is asking for.
+    for entry in REGISTRY.values():
+        assert entry.display_name, f"{entry.id} has no display_name"
+        assert entry.description, f"{entry.id} has no description"
 
 
-def test_fallback_message_for_unknown_id_is_generic() -> None:
-    msg = fallback_message("nope")
-    assert "home page" in msg.lower() or "home" in msg.lower()
+def test_get_doc_returns_entry_for_known_id() -> None:
+    entry = get_doc("mnda")
+    assert entry is not None
+    assert entry.id == "mnda"
+    assert entry.display_name == "Mutual Non-Disclosure Agreement"

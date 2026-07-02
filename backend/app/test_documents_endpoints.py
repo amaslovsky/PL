@@ -141,7 +141,7 @@ def test_post_document_rejects_bad_data(monkeypatch_tmp_db):
     assert r.status_code == 422
 
 
-def test_post_document_rejects_unsupported_type(monkeypatch_tmp_db):
+def test_post_document_rejects_unknown_type(monkeypatch_tmp_db):
     from app import db as dbmod
 
     dbmod.DB_PATH = monkeypatch_tmp_db
@@ -152,6 +152,6 @@ def test_post_document_rejects_unsupported_type(monkeypatch_tmp_db):
     _signup(client)
     r = client.post(
         "/api/documents",
-        json={"document_type": "cloud-service-agreement", "data": {}},
+        json={"document_type": "nope-not-a-real-doc", "data": {}},
     )
     assert r.status_code == 400
