@@ -27,7 +27,9 @@ WORKDIR /app
 COPY backend/pyproject.toml backend/uv.lock ./
 RUN uv sync --frozen --no-dev
 
-COPY backend/app ./app
+# The backend is laid out flat at the repo's backend/ root, so the entry
+# module is `main` (not `app.main` as in PL-7/PL-8).
+COPY backend/ ./
 
 # Copy the prebuilt static export.
 COPY --from=builder /build/frontend/out /app/static
@@ -41,4 +43,4 @@ EXPOSE 8000
 
 # Drop the SQLite file so the schema is rebuilt from scratch on every
 # container start, then launch uvicorn.
-CMD ["sh", "-c", "rm -f /app/data/app.db && uv run uvicorn app.main:app --host 0.0.0.0 --port 8000"]</</content>
+CMD ["sh", "-c", "rm -f /app/data/app.db && uv run uvicorn main:app --host 0.0.0.0 --port 8000"]</</content>

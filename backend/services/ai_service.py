@@ -1,71 +1,18 @@
-"""AI chat: pick a template from the user's message and draft it.
-
-The LLM is given the full catalog of templates and asked to:
-1. Pick the best-matching `document_type` for the user's request.
-2. Return a `fields` snapshot (today only MNDA has live fields; for
-   every other template the model returns `{}` and the chat surfaces
-   the standard terms on the right pane).
-3. Continue the drafting conversation with focused questions.
-"""
-
-from typing import Literal
+"""AI service: send a chat conversation to the LLM, parse the structured response."""
 
 from litellm import completion
-from pydantic import BaseModel, Field
 
-from .documents import REGISTRY
+from models.chat import ChatResponse
+from models.documents import DOCUMENT_CATALOG
 
 MODEL = "openrouter/openai/gpt-oss-120b"
 EXTRA_BODY = {"provider": {"order": ["cerebras"]}}
 
-# Literal so empty strings can't slip into `mode`.
-NdaTermMode = Literal["expires", "continues"]
-ConfidentialityTermMode = Literal["years", "perpetuity"]
-
-
-class Party(BaseModel):
-    name: str = ""
-    address: str = ""
-
-
-class NdaTerm(BaseModel):
-    mode: NdaTermMode = "expires"
-    # ge=1 prevents "0 year(s)" rendering.
-    years: int = Field(default=1, ge=1, le=99)
-
-
-class ConfidentialityTerm(BaseModel):
-    mode: ConfidentialityTermMode = "years"
-    years: int = Field(default=1, ge=1, le=99)
-
-
-class NdaFields(BaseModel):
-    party1: Party = Field(default_factory=Party)
-    party2: Party = Field(default_factory=Party)
-    purpose: str = ""
-    effectiveDate: str = ""
-    effectiveDateDisplay: str = ""
-    ndaTerm: NdaTerm = Field(default_factory=NdaTerm)
-    confidentialityTerm: ConfidentialityTerm = Field(
-        default_factory=ConfidentialityTerm
-    )
-    governingLaw: str = ""
-    jurisdiction: str = ""
-
-
-class ChatTurn(BaseModel):
-    """Single assistant turn: chosen template, current best-guess fields,
-    plus a chat reply."""
-
-    document_type: str
-    fields: dict = Field(default_factory=dict)
-    assistant_message: str = ""
-
 
 def _catalog_block() -> str:
     lines = ["Available templates (use the id exactly as written):"]
-    for entry in REGISTRY.values():
-        lines.append(f"- {entry.id} — {entry.display_name}: {entry.description}")
+    for entry in DOCUMENT_CATALOG.values():
+        lines.append(f"- {entry['id']} — {entry['displayName']}: {entry['description']}")
     return "\n".join(lines)
 
 
@@ -124,13 +71,13 @@ Behavior:
 """
 
 
-def chat(messages: list[dict], hint: str | None = None) -> ChatTurn:
+def chat(messages: list[dict], hint: str | None = None) -> ChatResponse:
     """Send the conversation to the LLM and parse the structured response.
 
     `messages` is a list of {"role": ..., "content": ...} dicts. `hint`,
     when provided, biases the LLM toward the named template (used by
     the FE when the user has explicitly picked one). The system prompt
-    is generated from the BE registry on every call so the catalog is
+    is generated from DOCUMENT_CATALOG on every call so the catalog is
     always in sync.
     """
     system_prompt = _system_prompt(hint)
@@ -139,9 +86,9 @@ def chat(messages: list[dict], hint: str | None = None) -> ChatTurn:
     response = completion(
         model=MODEL,
         messages=full_messages,
-        response_format=ChatTurn,
+        response_format=ChatResponse,
         reasoning_effort="low",
         extra_body=EXTRA_BODY,
     )
     raw = response.choices[0].message.content or ""
-    return ChatTurn.model_validate_json(raw)
+    return ChatResponse.model_validate_json(raw)

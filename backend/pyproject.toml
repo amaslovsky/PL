@@ -6,9 +6,6 @@ requires-python = ">=3.13"
 dependencies = [
     "bcrypt>=4.0,<5",
     "fastapi[standard]>=0.138.2",
-    # itsdangerous is still used by the legacy app/ package; will be
-    # removed in PL-9 Step 3 once JWT replaces it.
-    "itsdangerous>=2.2.0",
     "litellm>=1.55.0",
     "pydantic[email]>=2.9.0",
     "python-dotenv>=1.0.0",

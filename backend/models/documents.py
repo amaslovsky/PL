@@ -4,11 +4,15 @@ The catalog is loaded from project-root `catalog.json` at import time so
 the backend has a single source of truth for the templates. The frontend
 mirror in `frontend/lib/documents/registry.ts` is hand-authored; tests on
 both sides assert id-set parity so drift is caught early.
+
+Per-template validators live here too. Today only MNDA has a typed
+validator; other types store the LLM-returned shape verbatim.
 """
 
 import json
 from enum import Enum
 from pathlib import Path
+from typing import Literal
 
 from fastapi import HTTPException
 from pydantic import BaseModel, Field, ValidationError
@@ -104,15 +108,47 @@ def validate_document_data(document_type: str, data: dict) -> dict:
     422 on schema failure.
     """
     if document_type == "mnda":
-        # Local import keeps models/documents.py free of a circular
-        # dependency on the LLM schemas.
-        from app.ai import NdaFields  # legacy location, kept until PL-10
-
         try:
             NdaFields.model_validate(data)
         except ValidationError as e:
             raise HTTPException(status_code=422, detail=json.loads(e.json()))
     return data
+
+
+# --- MNDA per-type schema ---------------------------------------------------
+
+NdaTermMode = Literal["expires", "continues"]
+ConfidentialityTermMode = Literal["years", "perpetuity"]
+
+
+class Party(BaseModel):
+    name: str = ""
+    address: str = ""
+
+
+class NdaTerm(BaseModel):
+    mode: NdaTermMode = "expires"
+    # ge=1 prevents "0 year(s)" rendering.
+    years: int = Field(default=1, ge=1, le=99)
+
+
+class ConfidentialityTerm(BaseModel):
+    mode: ConfidentialityTermMode = "years"
+    years: int = Field(default=1, ge=1, le=99)
+
+
+class NdaFields(BaseModel):
+    party1: Party = Field(default_factory=Party)
+    party2: Party = Field(default_factory=Party)
+    purpose: str = ""
+    effectiveDate: str = ""
+    effectiveDateDisplay: str = ""
+    ndaTerm: NdaTerm = Field(default_factory=NdaTerm)
+    confidentialityTerm: ConfidentialityTerm = Field(
+        default_factory=ConfidentialityTerm
+    )
+    governingLaw: str = ""
+    jurisdiction: str = ""
 
 
 def is_known(document_type: str) -> bool:
