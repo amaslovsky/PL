@@ -1,21 +1,25 @@
-"""Pydantic request/response schemas for the /api/auth/* routes."""
+"""Pydantic models for /api/auth/*."""
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr
 
 
 class SignupRequest(BaseModel):
     email: EmailStr
-    password: str = Field(min_length=8, max_length=128)
+    password: str
 
 
-class SigninRequest(SignupRequest):
-    """SigninRequest is structurally identical to SignupRequest."""
+class SigninRequest(BaseModel):
+    email: EmailStr
+    password: str
 
 
 class UserResponse(BaseModel):
     id: int
     email: str
 
+    model_config = {"from_attributes": True}
+
 
 class AuthResponse(BaseModel):
     user: UserResponse
+    message: str

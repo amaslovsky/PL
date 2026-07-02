@@ -1,45 +1,83 @@
-"""Auth service: signup, signin, look-up.
+"""Authentication business logic.
 
-All operations take a SQLAlchemy `Session`. Routes are thin wrappers
-around these methods.
+Each method takes a SQLAlchemy `Session` and either returns data or raises
+HTTPException with a meaningful status code. Routes are thin wrappers.
 """
 
+from fastapi import HTTPException
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from core.security import hash_password, verify_password
+from core.security import (
+    create_access_token,
+    get_password_hash,
+    verify_password,
+)
 from database import User
 
 
 class AuthService:
-    @staticmethod
-    def signup(db: Session, email: str, password: str) -> User:
-        """Insert a new user with a hashed password.
+    """Handles authentication business logic."""
 
-        Raises IntegrityError on duplicate email; callers convert to 409.
+    def __init__(self, db: Session):
+        self.db = db
+
+    def signup(self, email: str, password: str) -> tuple[User, str]:
+        """Register a new user. Returns (user, token).
+
+        Raises HTTPException on duplicate email or short password.
         """
-        user = User(email=email, password_hash=hash_password(password))
-        db.add(user)
-        db.commit()
-        db.refresh(user)
-        return user
+        if len(password) < 8:
+            raise HTTPException(
+                status_code=400,
+                detail="Password must be at least 8 characters",
+            )
 
-    @staticmethod
-    def signin(db: Session, email: str, password: str) -> User | None:
-        """Return the user if credentials match, else None.
+        user = User(email=email, hashed_password=get_password_hash(password))
+        try:
+            self.db.add(user)
+            self.db.commit()
+            self.db.refresh(user)
+        except IntegrityError:
+            self.db.rollback()
+            raise HTTPException(status_code=400, detail="Email already registered")
+
+        token = create_access_token(user.id, user.email)
+        return user, token
+
+    def signin(self, email: str, password: str) -> tuple[User, str]:
+        """Authenticate a user. Returns (user, token).
 
         Performs a constant-time dummy bcrypt verify on unknown email to
         mitigate user-enumeration timing attacks.
         """
-        user = db.query(User).filter(User.email == email).one_or_none()
-        if user is None:
-            # Constant-time: hash a dummy password to even out timing.
-            verify_password(password, hash_password("dummy-password"))
-            return None
-        if not verify_password(password, user.password_hash):
-            return None
+        user = self.db.query(User).filter(User.email == email).first()
+
+        if user:
+            password_valid = verify_password(password, user.hashed_password)
+        else:
+            # Constant-time: do a real bcrypt verify against a dummy hash.
+            verify_password(
+                password,
+                "$2b$12$REuOu6.NifRKAB0krbBuzuEJaX7f.oZS5I9C/RZQLWESR.jIgpZ3C",
+            )
+            password_valid = False
+
+        if not password_valid:
+            raise HTTPException(
+                status_code=401, detail="Invalid email or password"
+            )
+
+        token = create_access_token(user.id, user.email)
+        return user, token
+
+    def get_user_by_id(self, user_id: int) -> User:
+        """Fetch a user by id. Raises 401 if not found."""
+        user = self.db.query(User).filter(User.id == user_id).first()
+        if not user:
+            raise HTTPException(status_code=401, detail="User not found")
         return user
 
-    @staticmethod
-    def get_user_by_id(db: Session, user_id: int) -> User | None:
-        return db.get(User, user_id)
+    def get_user_by_email(self, email: str) -> User | None:
+        """Fetch a user by email, or None if not found."""
+        return self.db.query(User).filter(User.email == email).first()

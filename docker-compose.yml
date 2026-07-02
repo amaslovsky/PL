@@ -6,7 +6,7 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - JWT_SECRET=${JWT_SECRET:-dev-only-jwt-secret-replace-in-prod}
+      - SECRET_KEY=${SECRET_KEY:-dev-secret-key-change-in-production}
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
     restart: unless-stopped
 

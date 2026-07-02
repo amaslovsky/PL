@@ -9,6 +9,17 @@ from database import Document
 
 class DocumentService:
     @staticmethod
+    def _serialize(row: Document) -> dict:
+        return {
+            "id": row.id,
+            "document_type": row.document_type,
+            "title": row.title,
+            "form_data": json.loads(row.form_data),
+            "created_at": row.created_at.isoformat(),
+            "updated_at": row.updated_at.isoformat(),
+        }
+
+    @staticmethod
     def list_for_user(db: Session, user_id: int) -> list[dict]:
         rows = (
             db.query(Document)
@@ -16,16 +27,7 @@ class DocumentService:
             .order_by(Document.id.desc())
             .all()
         )
-        return [
-            {
-                "id": r.id,
-                "document_type": r.document_type,
-                "data": json.loads(r.data_json),
-                "created_at": r.created_at.isoformat(),
-                "updated_at": r.updated_at.isoformat(),
-            }
-            for r in rows
-        ]
+        return [DocumentService._serialize(r) for r in rows]
 
     @staticmethod
     def get(db: Session, doc_id: int, user_id: int) -> dict | None:
@@ -36,20 +38,17 @@ class DocumentService:
         )
         if row is None:
             return None
-        return {
-            "id": row.id,
-            "document_type": row.document_type,
-            "data": json.loads(row.data_json),
-            "created_at": row.created_at.isoformat(),
-            "updated_at": row.updated_at.isoformat(),
-        }
+        return DocumentService._serialize(row)
 
     @staticmethod
-    def create(db: Session, user_id: int, document_type: str, data: dict) -> int:
+    def create(
+        db: Session, user_id: int, document_type: str, title: str, data: dict
+    ) -> int:
         row = Document(
             user_id=user_id,
             document_type=document_type,
-            data_json=json.dumps(data),
+            title=title,
+            form_data=json.dumps(data),
         )
         db.add(row)
         db.commit()
@@ -57,7 +56,14 @@ class DocumentService:
         return row.id
 
     @staticmethod
-    def update(db: Session, doc_id: int, user_id: int, document_type: str, data: dict) -> bool:
+    def update(
+        db: Session,
+        doc_id: int,
+        user_id: int,
+        document_type: str,
+        title: str,
+        data: dict,
+    ) -> bool:
         row = (
             db.query(Document)
             .filter(Document.id == doc_id, Document.user_id == user_id)
@@ -66,7 +72,8 @@ class DocumentService:
         if row is None:
             return False
         row.document_type = document_type
-        row.data_json = json.dumps(data)
+        row.title = title
+        row.form_data = json.dumps(data)
         db.commit()
         return True
 

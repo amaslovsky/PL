@@ -1,29 +1,33 @@
-"""HTTP routes for /api/chat — single LLM-backed chat turn."""
+"""HTTP routes for /api/chat/* — greeting + message."""
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from core.dependencies import get_current_user
+from core.dependencies import get_current_user, get_db
 from database import User
-from models.chat import ChatRequest
-from models.documents import is_known
+from models.chat import ChatRequest, ChatResponse
 from services.ai_service import chat as ai_chat
+from services.ai_service import greeting as ai_greeting
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
 
 
-@router.post("")
-async def post_chat(
-    body: ChatRequest,
+@router.get("/greeting", response_model=ChatResponse)
+async def get_greeting(
     _: User = Depends(get_current_user),
 ) -> dict:
+    """Return the static greeting without an LLM call."""
+    return ai_greeting()
+
+
+@router.post("/message", response_model=ChatResponse)
+async def post_message(
+    body: ChatRequest,
+    _: User = Depends(get_current_user),
+) -> ChatResponse:
     """Run one chat turn. The LLM picks the document type from the user's
-    message and returns the chosen id alongside the field snapshot and
+    message and returns the chosen slug alongside the field snapshot and
     assistant reply.
     """
-    if body.document_type is not None and not is_known(body.document_type):
-        raise HTTPException(status_code=400, detail="unknown document type")
-
     messages = [m.model_dump() for m in body.messages]
-    turn = ai_chat(messages, hint=body.document_type)
-    return turn.model_dump()
+    return ai_chat(messages)

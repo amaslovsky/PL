@@ -1,30 +1,57 @@
-"""Pydantic schemas for the /api/chat surface."""
+"""Pydantic schemas for /api/chat."""
+
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
 
 class Message(BaseModel):
-    role: str
+    role: Literal["user", "assistant", "system"]
     content: str
 
 
 class ChatRequest(BaseModel):
     messages: list[Message]
-    # Optional: the LLM picks the document from the user's message. The
-    # client can pass a hint to bias the LLM's choice, but it's never
-    # required.
-    document_type: str | None = None
 
 
 class ChatResponse(BaseModel):
-    """One assistant turn: chosen template, current best-guess fields, reply.
+    """One assistant turn: freeform response + the document the LLM picked.
 
-    `fields` is `dict` (not per-type submodels) so the LLM can return an
-    empty object for templates that don't yet have a live fill pipeline.
-    Per-doc validation for persistence is handled separately in
-    `models.documents.validate_document_data`.
+    The shape is open-ended so a single response can carry any per-doc
+    field the LLM wants to surface. MNDA fields live alongside the
+    generic `response` text.
     """
 
-    document_type: str
-    fields: dict = Field(default_factory=dict)
-    assistant_message: str = ""
+    response: str = ""
+
+    # Document type detection
+    documentType: str | None = None
+    suggestedDocument: str | None = None
+
+    # Common fields
+    purpose: str | None = None
+    effectiveDate: str | None = None
+    governingLaw: str | None = None
+    jurisdiction: str | None = None
+
+    # Mutual NDA specific
+    mndaTermType: Literal["expires", "continues"] | None = None
+    mndaTermYears: int | None = Field(default=None, ge=1, le=99)
+    confidentialityTermType: Literal["years", "perpetuity"] | None = None
+    confidentialityTermYears: int | None = Field(default=None, ge=1, le=99)
+    modifications: str | None = None
+
+    # Cloud Service Agreement
+    providerName: str | None = None
+    customerName: str | None = None
+    subscriptionPeriod: str | None = None
+    technicalSupport: str | None = None
+
+    # Party info (used by most templates)
+    party1Name: str | None = None
+    party1Address: str | None = None
+    party2Name: str | None = None
+    party2Address: str | None = None
+
+    # Free-form bag for anything else
+    formData: dict = Field(default_factory=dict)

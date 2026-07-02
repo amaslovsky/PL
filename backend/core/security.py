@@ -1,49 +1,44 @@
-"""Security primitives: JWT cookies + bcrypt password hashing."""
+"""Security utilities: bcrypt password hashing + JWT encode/decode.
+
+Matches the prelegal reference: passlib CryptContext for password hashing
+(handles bcrypt 4.x compat internally), `python-jose` for JWT. The cookie
+name `access_token` and the `SECRET_KEY` env var follow the reference too.
+"""
 
 import os
 from datetime import datetime, timedelta, timezone
+from typing import Optional
 
-import bcrypt
 from jose import JWTError, jwt
+from passlib.context import CryptContext
 
-# JWT secret. Defaults to a development-only string so a missing env var
-# does not crash a fresh container — production must set this in .env.
-JWT_SECRET: str = os.getenv("JWT_SECRET", "dev-only-jwt-secret-replace-in-prod")
-JWT_ALGORITHM: str = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 days, matching PL-7
+SECRET_KEY: str = os.getenv("SECRET_KEY", "dev-secret-key-change-in-production")
+ALGORITHM: str = "HS256"
+ACCESS_TOKEN_EXPIRE_DAYS: int = 7
 
-COOKIE_NAME: str = "pl_session"
-MAX_AGE: int = 60 * 60 * 24 * 7  # 7 days in seconds, for the Set-Cookie header
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
-def hash_password(password: str) -> str:
-    """Return the bcrypt hash for `password` as a UTF-8 string."""
-    return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    """Return True if `plain_password` matches `hashed_password`."""
+    return pwd_context.verify(plain_password, hashed_password)
 
 
-def verify_password(password: str, password_hash: str) -> bool:
-    """Return True if `password` matches the stored bcrypt hash."""
+def get_password_hash(password: str) -> str:
+    """Hash a password for storage."""
+    return pwd_context.hash(password)
+
+
+def create_access_token(user_id: int, email: str) -> str:
+    """Mint a JWT containing the user id, email, and a 7-day expiry."""
+    expire = datetime.now(timezone.utc) + timedelta(days=ACCESS_TOKEN_EXPIRE_DAYS)
+    payload = {"sub": str(user_id), "email": email, "exp": expire}
+    return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
+
+
+def decode_access_token(token: str) -> Optional[dict]:
+    """Decode a JWT and return its payload. None if invalid or expired."""
     try:
-        return bcrypt.checkpw(password.encode("utf-8"), password_hash.encode("utf-8"))
-    except ValueError:
-        # Malformed stored hash — treat as no match rather than 500.
-        return False
-
-
-def create_access_token(user_id: int) -> str:
-    """Mint a signed JWT containing the user id and an expiry."""
-    expire = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    payload = {"sub": str(user_id), "exp": expire}
-    return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
-
-
-def decode_access_token(token: str) -> int | None:
-    """Return the user id encoded in `token`, or None if invalid/expired."""
-    try:
-        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
-        sub = payload.get("sub")
-        if not sub:
-            return None
-        return int(sub)
-    except (JWTError, ValueError):
+        return jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+    except JWTError:
         return None

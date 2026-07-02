@@ -15,9 +15,9 @@ router = APIRouter(prefix="/api/documents", tags=["documents"])
 async def list_documents(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
-) -> list[dict]:
+) -> dict:
     """List the signed-in user's saved drafts (newest first)."""
-    return DocumentService.list_for_user(db, user.id)
+    return {"documents": DocumentService.list_for_user(db, user.id)}
 
 
 @router.post("")
@@ -30,8 +30,10 @@ async def post_document(
     if not is_known(body.document_type):
         raise HTTPException(status_code=400, detail="unknown document type")
     data = validate_document_data(body.document_type, body.data)
-    doc_id = DocumentService.create(db, user.id, body.document_type, data)
-    return {"id": doc_id, "document_type": body.document_type}
+    doc_id = DocumentService.create(
+        db, user.id, body.document_type, body.title, data
+    )
+    return {"id": doc_id, "document_type": body.document_type, "title": body.title}
 
 
 @router.get("/{doc_id}")
@@ -58,9 +60,11 @@ async def put_document(
     if not is_known(body.document_type):
         raise HTTPException(status_code=400, detail="unknown document type")
     data = validate_document_data(body.document_type, body.data)
-    if not DocumentService.update(db, doc_id, user.id, body.document_type, data):
+    if not DocumentService.update(
+        db, doc_id, user.id, body.document_type, body.title, data
+    ):
         raise HTTPException(status_code=404, detail="document not found")
-    return {"id": doc_id, "document_type": body.document_type}
+    return {"id": doc_id, "document_type": body.document_type, "title": body.title}
 
 
 @router.delete("/{doc_id}")
@@ -72,4 +76,4 @@ async def delete_document(
     """Delete a draft owned by the signed-in user."""
     if not DocumentService.delete(db, doc_id, user.id):
         raise HTTPException(status_code=404, detail="document not found")
-    return {"ok": True}
+    return {"message": "Document deleted"}
